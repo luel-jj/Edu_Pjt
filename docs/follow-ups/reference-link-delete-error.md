@@ -1,0 +1,1 @@
+`TaskDetailPanel.handleDeleteLink`(app/(app)/tasks/[id]/task-detail-panel.tsx:67)가 `deleteReferenceLink`의 반환값(error)을 확인하지 않고 낙관적으로 목록에서 먼저 지워버려서, 삭제가 실제로 실패해도 화면과 DB 상태가 어긋난 채 사용자에게 알리지 않는다. 에러 체크와 롤백을 추가해야 한다.

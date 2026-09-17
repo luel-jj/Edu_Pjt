@@ -1,0 +1,1 @@
+`Gantt`(app/(app)/tasks/tasks-view.tsx:386)의 `endIdx`가 표시 구간(15일)을 벗어나는 업무에 대해 `indexFor`가 반환하는 out-of-range sentinel(days.length)을 그대로 픽셀 폭 계산에 써서, 완료 예정일이 창 밖인 업무의 막대가 그리드 열 수를 넘어 옆 프로젝트 행 영역까지 시각적으로 침범한다. endIdx를 `days.length`로 클램프해야 한다.

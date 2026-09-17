@@ -1,0 +1,1 @@
+`saveDailyClose`(lib/tasks/actions.ts:242)의 상태 강제 지정 로직이 최신 계산값(newStatus)이 아니라 원래 DB 상태(task.status)와 비교해서, 사용자가 오늘 쓴 시간을 입력하면서 동시에 상태를 되돌리려 하면(예: "진행 전"으로 강제 선택) 자동 전환 규칙에 조용히 덮어써진다. 우선순위를 newStatus 기준 비교로 바꿔야 한다.
