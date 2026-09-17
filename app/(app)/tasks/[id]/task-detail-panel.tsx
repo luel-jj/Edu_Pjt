@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { addReferenceLink, deleteReferenceLink, editTask } from "@/lib/tasks/actions";
+import { addReferenceLink, deleteReferenceLink, editTask, reopenTask } from "@/lib/tasks/actions";
 import { formatFullDateKo, TASK_TYPE_LABEL } from "@/lib/tasks/format";
 import type { Project, Task, TaskReferenceLink, TaskType } from "@/lib/tasks/types";
 
@@ -34,9 +34,13 @@ export function TaskDetailPanel({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [links, setLinks] = useState(referenceLinks);
+  const [linkMode, setLinkMode] = useState<"link" | "note">("link");
   const [newLinkLabel, setNewLinkLabel] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [reopenPending, startReopenTransition] = useTransition();
+  const [reopenError, setReopenError] = useState<string | null>(null);
 
   const [title, setTitle] = useState(task.title);
   const [taskType, setTaskType] = useState<TaskType>(task.taskType);
@@ -50,24 +54,47 @@ export function TaskDetailPanel({
   async function handleAddLink() {
     const label = newLinkLabel.trim();
     if (!label) {
-      setLinkError("자료 이름을 입력해 주세요.");
+      setLinkError(linkMode === "link" ? "자료 이름을 입력해 주세요." : "비고 내용을 입력해 주세요.");
       return;
     }
-    const result = await addReferenceLink(task.id, label, label.startsWith("http") ? label : undefined);
+    const url = linkMode === "link" ? newLinkUrl.trim() || undefined : undefined;
+    const result = await addReferenceLink(task.id, label, url);
     if (result.error) {
       setLinkError(result.error);
       return;
     }
-    setLinks((prev) => [...prev, { id: crypto.randomUUID(), taskId: task.id, label, url: null, createdAt: new Date().toISOString() }]);
+    setLinks((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), taskId: task.id, label, url: url ?? null, createdAt: new Date().toISOString() },
+    ]);
     setNewLinkLabel("");
+    setNewLinkUrl("");
     setLinkError(null);
     router.refresh();
   }
 
   async function handleDeleteLink(id: string) {
+    const previous = links;
     setLinks((prev) => prev.filter((l) => l.id !== id));
-    await deleteReferenceLink(id, task.id);
+    const result = await deleteReferenceLink(id, task.id);
+    if (result.error) {
+      setLinks(previous);
+      setLinkError(result.error);
+      return;
+    }
     router.refresh();
+  }
+
+  function handleReopen() {
+    setReopenError(null);
+    startReopenTransition(async () => {
+      const result = await reopenTask(task.id);
+      if (result.error) {
+        setReopenError(result.error);
+        return;
+      }
+      router.refresh();
+    });
   }
 
   function handleSave() {
@@ -99,13 +126,19 @@ export function TaskDetailPanel({
   return (
     <>
       {!editing ? (
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => setEditing(true)}>
             수정
           </Button>
           <Button variant="outline" render={<Link href={`/tasks/${task.id}/history`} />} nativeButton={false}>
             히스토리
           </Button>
+          {task.status === "done" ? (
+            <Button variant="outline" onClick={handleReopen} disabled={reopenPending}>
+              {reopenPending ? "취소 중..." : "완료 취소"}
+            </Button>
+          ) : null}
+          {reopenError ? <span className="text-sm text-destructive">{reopenError}</span> : null}
         </div>
       ) : null}
 
@@ -132,11 +165,47 @@ export function TaskDetailPanel({
             ))}
             {links.length === 0 ? <li className="py-2.5 text-sm text-muted-foreground">아직 붙인 자료가 없습니다.</li> : null}
           </ul>
-          <div className="mt-3 flex gap-2">
-            <Input placeholder="자료 이름" value={newLinkLabel} onChange={(e) => setNewLinkLabel(e.target.value)} />
-            <Button type="button" variant="outline" size="sm" onClick={handleAddLink}>
-              추가
-            </Button>
+          <div className="mt-3 flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={linkMode === "link" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setLinkMode("link")}
+              >
+                링크
+              </Button>
+              <Button
+                type="button"
+                variant={linkMode === "note" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setLinkMode("note")}
+              >
+                비고
+              </Button>
+            </div>
+            {linkMode === "link" ? (
+              <div className="flex gap-2">
+                <Input placeholder="자료 이름" value={newLinkLabel} onChange={(e) => setNewLinkLabel(e.target.value)} className="flex-1" />
+                <Input
+                  type="url"
+                  placeholder="URL (선택)"
+                  value={newLinkUrl}
+                  onChange={(e) => setNewLinkUrl(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={handleAddLink}>
+                  추가
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Input placeholder="비고 내용" value={newLinkLabel} onChange={(e) => setNewLinkLabel(e.target.value)} className="flex-1" />
+                <Button type="button" variant="outline" size="sm" onClick={handleAddLink}>
+                  추가
+                </Button>
+              </div>
+            )}
           </div>
           {linkError ? <p className="mt-1.5 text-xs text-destructive">{linkError}</p> : null}
         </CardContent>

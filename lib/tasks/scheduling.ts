@@ -31,24 +31,30 @@ function round(value: number, step: number): number {
 }
 
 /**
- * 하루 가용 시간 = 근무 8시간 − 최근 기록된 하루 평균 회의 시간.
- * 회의 기록이 없으면 8시간을 그대로 쓴다.
- * recentMeetingHours는 최근 기록 순으로 정렬된 회의 시간 배열(최근 10근무일 이내를 호출부에서 잘라 넘긴다).
+ * 하루 가용 시간 = 최근 기록된 하루 평균 근무 시간 − 최근 기록된 하루 평균 회의 시간.
+ * 근무 시간 기록이 없으면 기본 근무 8시간을 기준으로 쓴다. 회의 기록이 없으면 회의 시간은 0으로 본다.
+ * recentMeetingHours/recentWorkHours는 최근 기록 순으로 정렬된 배열(최근 10근무일 이내를 호출부에서 잘라 넘긴다).
  */
-export function computeDailyAvailableHours(recentMeetingHours: number[]): {
+export function computeDailyAvailableHours(
+  recentMeetingHours: number[],
+  recentWorkHours: number[] = []
+): {
   availableHours: number;
   averageMeetingHours: number;
+  averageWorkHours: number;
   sampleSize: number;
 } {
-  const sample = recentMeetingHours.slice(0, RECENT_MEETING_SAMPLE_SIZE);
-  if (sample.length === 0) {
-    return { availableHours: WORK_HOURS_PER_DAY, averageMeetingHours: 0, sampleSize: 0 };
-  }
-  const average = sample.reduce((sum, h) => sum + h, 0) / sample.length;
+  const meetingSample = recentMeetingHours.slice(0, RECENT_MEETING_SAMPLE_SIZE);
+  const workSample = recentWorkHours.slice(0, RECENT_MEETING_SAMPLE_SIZE);
+  const averageMeetingHours =
+    meetingSample.length === 0 ? 0 : round(meetingSample.reduce((sum, h) => sum + h, 0) / meetingSample.length, 0.1);
+  const averageWorkHours =
+    workSample.length === 0 ? WORK_HOURS_PER_DAY : round(workSample.reduce((sum, h) => sum + h, 0) / workSample.length, 0.1);
   return {
-    availableHours: round(WORK_HOURS_PER_DAY - average, 0.1),
-    averageMeetingHours: round(average, 0.1),
-    sampleSize: sample.length,
+    availableHours: round(averageWorkHours - averageMeetingHours, 0.1),
+    averageMeetingHours,
+    averageWorkHours,
+    sampleSize: meetingSample.length,
   };
 }
 

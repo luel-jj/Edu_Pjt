@@ -45,6 +45,18 @@ describe("computeDailyAvailableHours", () => {
     expect(result.sampleSize).toBe(10);
     expect(result.averageMeetingHours).toBe(1);
   });
+
+  it("근무 시간 기록이 없으면 기본 8시간을 기준으로 쓴다", () => {
+    const result = computeDailyAvailableHours([2, 2], []);
+    expect(result.averageWorkHours).toBe(8);
+    expect(result.availableHours).toBe(6);
+  });
+
+  it("야근으로 평균 근무 10시간이면 가용 시간이 그만큼 늘어난다", () => {
+    const result = computeDailyAvailableHours([2, 2], [10, 10]);
+    expect(result.averageWorkHours).toBe(10);
+    expect(result.availableHours).toBe(8);
+  });
 });
 
 describe("computeTaskSize", () => {

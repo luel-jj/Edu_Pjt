@@ -30,12 +30,42 @@ export async function createProject(name: string) {
 
 export async function setProjectStatus(projectId: string, status: "active" | "completed") {
   const supabase = await createClient();
+  if (status === "completed") {
+    const { data: remaining, error: countError } = await supabase
+      .from("tasks")
+      .select("id")
+      .eq("project_id", projectId)
+      .neq("status", "done")
+      .limit(1);
+    if (countError) return { error: countError.message };
+    if (remaining && remaining.length > 0) {
+      return { error: "남은 업무가 있어 완료 처리할 수 없습니다." };
+    }
+  }
   const { error } = await supabase
     .from("projects")
     .update({ status, completed_at: status === "completed" ? new Date().toISOString() : null })
     .eq("id", projectId);
   if (error) return { error: error.message };
   revalidatePath("/tasks");
+  return { data: true };
+}
+
+export async function deleteProject(projectId: string) {
+  const supabase = await createClient();
+  const { data: remaining, error: countError } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("project_id", projectId)
+    .limit(1);
+  if (countError) return { error: countError.message };
+  if (remaining && remaining.length > 0) {
+    return { error: "업무가 남아 있어 삭제할 수 없습니다." };
+  }
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+  if (error) return { error: error.message };
+  revalidatePath("/tasks");
+  revalidatePath("/tasks/new");
   return { data: true };
 }
 
@@ -160,6 +190,34 @@ export async function editTask(input: EditTaskInput) {
   return { data: true };
 }
 
+export async function reopenTask(taskId: string) {
+  const userId = await requireUserId();
+  const supabase = await createClient();
+  const { data: existing, error: fetchError } = await supabase.from("tasks").select("status").eq("id", taskId).single();
+  if (fetchError || !existing) return { error: fetchError?.message ?? "업무를 찾을 수 없습니다." };
+  if (existing.status !== "done") return { error: "완료된 업무만 취소할 수 있습니다." };
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ status: "in_progress", completed_at: null, actual_hours: null })
+    .eq("id", taskId);
+  if (error) return { error: error.message };
+
+  await supabase.from("task_history").insert({
+    task_id: taskId,
+    user_id: userId,
+    event_type: "status_changed",
+    detail: { from: "done", to: "in_progress" },
+    reason: "완료 취소",
+  });
+
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/performance");
+  revalidatePath(`/tasks/${taskId}`);
+  return { data: true };
+}
+
 export async function addReferenceLink(taskId: string, label: string, url?: string) {
   const trimmed = label.trim();
   if (!trimmed) return { error: "이름을 입력해 주세요." };
@@ -194,13 +252,16 @@ export interface DailyTaskEntry {
   status: Task["status"];
 }
 
-export async function saveDailyClose(dateIso: string, meetingHours: number, entries: DailyTaskEntry[]) {
+export async function saveDailyClose(dateIso: string, meetingHours: number, workHours: number, entries: DailyTaskEntry[]) {
   const userId = await requireUserId();
   const supabase = await createClient();
 
   await supabase
     .from("daily_logs")
-    .upsert({ user_id: userId, log_date: dateIso, meeting_hours: meetingHours }, { onConflict: "user_id,log_date" });
+    .upsert(
+      { user_id: userId, log_date: dateIso, meeting_hours: meetingHours, work_hours: workHours },
+      { onConflict: "user_id,log_date" }
+    );
 
   const completedTasks: { title: string; actualHours: number }[] = [];
   let totalHoursLogged = 0;

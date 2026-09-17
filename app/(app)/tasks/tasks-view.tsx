@@ -1,15 +1,26 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { setProjectStatus } from "@/lib/tasks/actions";
+import { deleteProject, setProjectStatus } from "@/lib/tasks/actions";
 import { formatHours, formatShortDateKo, TASK_TYPE_LABEL } from "@/lib/tasks/format";
 import { upcomingWorkdays } from "@/lib/tasks/scheduling";
 import type { TasksListData } from "@/lib/tasks/aggregate";
@@ -17,7 +28,7 @@ import type { TasksListData } from "@/lib/tasks/aggregate";
 const GANTT_DAYS = 15;
 
 export function TasksView({ data }: { data: TasksListData }) {
-  const { tasks, projects, recentCompleted, today } = data;
+  const { tasks, projects, recentCompleted, today, projectIdsWithAnyTasks } = data;
 
   const allSorted = useMemo(
     () => [...tasks].sort((a, b) => (a.requestedDueDate < b.requestedDueDate ? -1 : a.requestedDueDate > b.requestedDueDate ? 1 : 0)),
@@ -38,7 +49,9 @@ export function TasksView({ data }: { data: TasksListData }) {
       if (!groups.has(key)) groups.set(key, { projectId: t.projectId, name: t.projectName, status: "active", tasks: [] });
       groups.get(key)!.tasks.push(t);
     }
-    return [...groups.values()].filter((g) => g.tasks.length > 0 || g.status === "completed");
+    // "프로젝트 없음" 그룹은 업무가 있을 때만 보여준다. 실제 프로젝트는 업무가 0건이어도 항상 보여야
+    // 완료 처리·삭제(0건일 때만) 같은 관리 동작에 계속 접근할 수 있다.
+    return [...groups.values()].filter((g) => g.projectId !== null || g.tasks.length > 0);
   }, [projects, allSorted]);
 
   return (
@@ -81,7 +94,11 @@ export function TasksView({ data }: { data: TasksListData }) {
             </CardHeader>
             <CardContent className="flex flex-col gap-6">
               {byProject.map((group) => (
-                <ProjectGroup key={group.projectId ?? "__none__"} group={group} />
+                <ProjectGroup
+                  key={group.projectId ?? "__none__"}
+                  group={group}
+                  hasAnyTasks={group.projectId !== null && projectIdsWithAnyTasks.has(group.projectId)}
+                />
               ))}
             </CardContent>
           </Card>
@@ -175,8 +192,10 @@ function AllTable({ tasks }: { tasks: TasksListData["tasks"] }) {
 
 function ProjectGroup({
   group,
+  hasAnyTasks,
 }: {
   group: { projectId: string | null; name: string; status: string; tasks: TasksListData["tasks"] };
+  hasAnyTasks: boolean;
 }) {
   const remainingHours = group.tasks.reduce((sum, t) => sum + t.remainingHours, 0);
   const dueRiskCount = group.tasks.filter((t) => t.schedule?.isDueRisk).length;
@@ -192,7 +211,14 @@ function ProjectGroup({
             {dueRiskCount > 0 ? ` · 마감 위험 ${dueRiskCount}건` : ""}
           </span>
         </div>
-        {group.projectId ? <ProjectStatusButton projectId={group.projectId} status={group.status} /> : null}
+        {group.projectId ? (
+          <div className="flex items-center gap-2">
+            <ProjectStatusButton projectId={group.projectId} status={group.status} remainingCount={group.tasks.length} />
+            {group.tasks.length === 0 && !hasAnyTasks ? (
+              <ProjectDeleteButton projectId={group.projectId} projectName={group.name} />
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {group.tasks.length === 0 ? (
         <p className="px-4 py-4 text-sm text-muted-foreground">남은 업무가 없습니다.</p>
@@ -247,23 +273,86 @@ function ProjectGroup({
   );
 }
 
-function ProjectStatusButton({ projectId, status }: { projectId: string; status: string }) {
+function ProjectStatusButton({
+  projectId,
+  status,
+  remainingCount,
+}: {
+  projectId: string;
+  status: string;
+  remainingCount: number;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const blockedByRemaining = status !== "completed" && remainingCount > 0;
+
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={isPending}
-      onClick={() =>
-        startTransition(async () => {
-          await setProjectStatus(projectId, status === "completed" ? "active" : "completed");
-          router.refresh();
-        })
-      }
-    >
-      {status === "completed" ? "다시 열기" : "완료 처리"}
-    </Button>
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={isPending || blockedByRemaining}
+        title={blockedByRemaining ? "남은 업무가 있어 완료 처리할 수 없습니다." : undefined}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await setProjectStatus(projectId, status === "completed" ? "active" : "completed");
+            if (result.error) {
+              setError(result.error);
+              return;
+            }
+            setError(null);
+            router.refresh();
+          })
+        }
+      >
+        {status === "completed" ? "다시 열기" : "완료 처리"}
+      </Button>
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </div>
+  );
+}
+
+function ProjectDeleteButton({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>삭제</AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{projectName} 프로젝트를 삭제할까요?</AlertDialogTitle>
+          <AlertDialogDescription>
+            되돌릴 수 없습니다. 업무가 남아 있으면 삭제되지 않습니다.
+            {error ? <span className="mt-1 block text-destructive">{error}</span> : null}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setError(null)}>취소</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={isPending}
+            onClick={(e) => {
+              e.preventDefault();
+              startTransition(async () => {
+                const result = await deleteProject(projectId);
+                if (result.error) {
+                  setError(result.error);
+                  return;
+                }
+                setOpen(false);
+                router.refresh();
+              });
+            }}
+          >
+            삭제
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

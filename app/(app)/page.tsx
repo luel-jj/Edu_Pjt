@@ -11,7 +11,7 @@ import { loadMorningData } from "@/lib/tasks/aggregate";
 import { formatFullDateKo, formatHours, formatShortDateKo, TASK_STATUS_LABEL, TASK_TYPE_LABEL } from "@/lib/tasks/format";
 
 export default async function MorningPage() {
-  const { today, availableHours, averageMeetingHours, sampleSize, tasks, dueRiskTasks } = await loadMorningData();
+  const { today, availableHours, averageMeetingHours, averageWorkHours, sampleSize, tasks, dueRiskTasks } = await loadMorningData();
 
   return (
     <div>
@@ -24,8 +24,8 @@ export default async function MorningPage() {
         <span className="text-xl font-semibold tracking-tight">오늘 {formatHours(availableHours)}시간</span>
         <span className="text-sm text-muted-foreground">
           {sampleSize > 0
-            ? `근무 8시간에서 최근 ${sampleSize}근무일 평균 회의 ${formatHours(averageMeetingHours)}시간을 뺐습니다.`
-            : "회의 기록이 없어 근무 8시간을 그대로 씁니다."}
+            ? `최근 ${sampleSize}근무일 평균 근무 ${formatHours(averageWorkHours)}시간에서 평균 회의 ${formatHours(averageMeetingHours)}시간을 뺐습니다.`
+            : "근무·회의 기록이 없어 근무 8시간을 그대로 씁니다."}
         </span>
       </div>
 
