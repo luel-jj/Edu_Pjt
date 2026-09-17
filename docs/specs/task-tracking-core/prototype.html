@@ -1,0 +1,2032 @@
+<!--
+  prototype shell: the review chrome every prototype starts from.
+
+  Keep this comment in the prototype you grow from here: it is the contract,
+  and later turns work from that file rather than from this one.
+
+  Contract (extend product screens; keep the review shell):
+  - Product:  .sh-stage contains only end-user product UI. Keep review notes,
+               rationale, instructions, and approval controls in conversation.
+  - Screens:  <section data-screen="slug" data-title="Label"> inside .sh-stage.
+               The selector, arrow keys, and #hash routing build themselves.
+               Use one option per product destination or distinct surface,
+               named by its product role. Keep baselines, variants, comparison
+               labels, steps, indexes, and progress out of names and states.
+               Links may use href="#slug".
+  - States:   "Default" is automatic. A screen declares only representative
+               presets in data-states="Empty,Error". Use natural, screen-specific
+               names. Reserve presets for important multi-step results, forced
+               data or errors, or materially different structure; keep one-click
+               and transient states as interactions. Use data-when="Empty" on
+               preset-only elements. Call prototypeShell.setState("Name") on
+               entry and setState("Default") on exit, including when repeated
+               actions cross a preset condition.
+  - Viewport: "vp (m)" cycles full / 390 / 768. The 390 preset is a
+               fixed-height, internally scrolling phone frame. Start a
+               mobile-first prototype by adding class="sh-vp-390" to <body>
+               (or a bootstrap classList.add before the chrome script runs).
+  - Pinning:  keep in-frame bars (tab bars, CTAs) inside the phone with
+               position: sticky; position: fixed pins to the browser window.
+  - Tokens:   replace the project-tokens block with project tokens copied
+               verbatim. Map differing names to --background, --foreground, and
+               --font afterwards; replace network fonts with a system stack and
+               note that substitution. Without a design system, keep this
+               palette as the finished style. When the project ships dark
+               tokens, copy them under .sh-theme-dark, which the shell sets
+               on both the root element and body, so :root.sh-theme-dark and
+               body.sh-theme-dark work too. A .dark class or a
+               prefers-color-scheme media query copied verbatim would follow
+               the reviewer's system instead of the toggle.
+  - Theme:    the light / dark switch (t) changes the product surface only.
+               It appears only when a .sh-theme-dark rule declares dark tokens,
+               so a prototype without them carries no theme control. Prototypes
+               always load light; the review bar keeps its own dark styling in
+               both themes so it still reads as chrome.
+  - Placeholders: .wf-pic stands in for pictures the prototype has no real
+               files for. Use real text everywhere text belongs.
+
+  - Chrome:   Keep exactly the screen selector, selected-screen state selector,
+               viewport cycle, and theme toggle.
+
+  Self-contained by design: no build, no framework, no network.
+-->
+<meta charset="utf-8">
+<title>Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ── project tokens: copied verbatim from app/globals.css (shadcn lyra/cyan preset).
+       --font-sans is supplied by next/font at runtime, so a system stack stands in here. ── */
+  :root {
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.148 0.004 228.8);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.148 0.004 228.8);
+    --primary: oklch(0.52 0.105 223.128);
+    --primary-foreground: oklch(0.984 0.019 200.873);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --muted: oklch(0.963 0.002 197.1);
+    --muted-foreground: oklch(0.56 0.021 213.5);
+    --accent: oklch(0.963 0.002 197.1);
+    --accent-foreground: oklch(0.218 0.008 223.9);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.925 0.005 214.3);
+    --input: oklch(0.925 0.005 214.3);
+    --ring: oklch(0.723 0.014 214.4);
+    --radius: 0.625rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.148 0.004 228.8);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+                 "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    --font: var(--font-sans);
+  }
+
+  .sh-theme-dark {
+    --background: oklch(0.148 0.004 228.8);
+    --foreground: oklch(0.987 0.002 197.1);
+    --card: oklch(0.218 0.008 223.9);
+    --card-foreground: oklch(0.987 0.002 197.1);
+    --popover: oklch(0.218 0.008 223.9);
+    --popover-foreground: oklch(0.987 0.002 197.1);
+    --primary: oklch(0.45 0.085 224.283);
+    --primary-foreground: oklch(0.984 0.019 200.873);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.275 0.011 216.9);
+    --muted-foreground: oklch(0.723 0.014 214.4);
+    --accent: oklch(0.275 0.011 216.9);
+    --accent-foreground: oklch(0.987 0.002 197.1);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.56 0.021 213.5);
+  }
+
+  /* ── review chrome (sh-*): keep; extend product styles elsewhere ── */
+  * { box-sizing: border-box }
+  body {
+    margin: 0; padding: 0 0 40px;
+    background: var(--background, #f6f6f6); color: var(--foreground, #3a3a3a);
+    font-family: var(--font, system-ui, sans-serif);
+  }
+  .sh-bar {
+    position: sticky; top: 0; z-index: 999;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 8px 12px; background: #191a1c; color: #d7d7d7;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sh-bar b, .sh-control-label { color: #8a8f98; font-weight: 500 }
+  .sh-control { display: inline-flex; gap: 5px; align-items: center }
+  .sh-bar button {
+    border: 1px solid #3a3d42; background: none; color: inherit;
+    font: inherit; padding: 2px 9px; border-radius: 99px; cursor: pointer;
+  }
+  .sh-bar select {
+    width: 170px; border: 1px solid #3a3d42; background: #232428; color: inherit;
+    font: inherit; padding: 3px 28px 3px 9px; border-radius: 7px; cursor: pointer;
+    color-scheme: dark;
+  }
+  #sh-screen { width: 190px }
+  .sh-bar button.on { background: #d7d7d7; color: #191a1c; border-color: #d7d7d7 }
+  .sh-theme { display: inline-flex; border: 1px solid #3a3d42; border-radius: 99px; overflow: hidden }
+  .sh-theme button { border: 0; border-radius: 0; padding: 2px 10px }
+  .sh-spacer { flex: 1 }
+  .sh-stage { max-width: 960px; margin: 0 auto; padding: 12px 16px 0 }
+  [hidden] { display: none !important }
+
+  /* viewport presets */
+  .sh-vp-390 .sh-stage {
+    max-width: 390px; background: var(--background, #f6f6f6);
+    border: 10px solid #191a1c; border-radius: 28px;
+    padding: 16px 12px; height: min(844px, calc(100dvh - 52px));
+    overflow-y: auto; margin-top: 12px;
+  }
+  .sh-vp-768 .sh-stage {
+    max-width: 768px; border: 1px solid #c4c4c4; border-radius: 12px;
+    padding: 16px; margin-top: 12px;
+  }
+
+  /* placeholders */
+  .wf-pic  { border-radius: 4px; background:
+             repeating-linear-gradient(45deg, #e9e9e9, #e9e9e9 6px, #f2f2f2 6px, #f2f2f2 12px) }
+  .sh-theme-dark .wf-pic { background: repeating-linear-gradient(45deg,
+             color-mix(in srgb, var(--foreground) 16%, transparent) 0 6px,
+             color-mix(in srgb, var(--foreground) 8%, transparent) 6px 12px) }
+
+  /* ── product: built for a desktop browser window first ── */
+  .app { padding-bottom: 48px; font-size: 14px; line-height: 1.6 }
+  .app-nav {
+    display: flex; gap: 4px; align-items: center;
+    border-bottom: 1px solid var(--border); margin-bottom: 24px;
+  }
+  .app-brand { font-weight: 600; font-size: 15px; margin-right: 16px; padding-bottom: 12px }
+  .app-nav a {
+    color: var(--muted-foreground); text-decoration: none; font-size: 14px;
+    padding: 8px 12px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .app-nav a.on { color: var(--foreground); border-bottom-color: var(--primary); font-weight: 500 }
+  .app-nav .app-spacer { flex: 1 }
+
+  .back-link {
+    display: inline-block; margin-bottom: 10px; font-size: 13px;
+    color: var(--muted-foreground); text-decoration: none;
+  }
+  .back-link:hover { color: var(--foreground) }
+
+  .page-head { margin-bottom: 20px }
+  .page-head-row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px }
+  .page-head-row .page-head { margin-bottom: 0; flex: 1; min-width: 200px }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em }
+  .page-sub { color: var(--muted-foreground); font-size: 13px; margin: 0 }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px }
+  h3 { font-size: 14px; font-weight: 500; margin: 0 }
+
+  .card {
+    background: var(--card); color: var(--card-foreground);
+    border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .card + .card { margin-top: 16px }
+  .card-head { padding: 16px 18px 12px }
+  .card-desc { color: var(--muted-foreground); font-size: 13px; margin: 0 }
+  .card-body { padding: 0 18px 18px }
+  .card-body-flush { padding: 0 }
+
+  .capacity {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px;
+    padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--muted); margin-bottom: 16px;
+  }
+  .capacity-num { font-size: 20px; font-weight: 600; letter-spacing: -0.01em }
+  .capacity-why { color: var(--muted-foreground); font-size: 13px }
+
+  .alert {
+    display: flex; gap: 12px; padding: 14px 16px; margin-bottom: 20px;
+    border: 1px solid color-mix(in oklab, var(--destructive) 40%, var(--border));
+    border-radius: var(--radius);
+    background: color-mix(in oklab, var(--destructive) 7%, var(--background));
+  }
+  .alert-mark {
+    flex: none; width: 18px; height: 18px; margin-top: 2px; border-radius: 99px;
+    background: var(--destructive); color: var(--background);
+    font-size: 12px; font-weight: 700; line-height: 18px; text-align: center;
+  }
+  .alert-title { font-weight: 600; margin: 0 0 6px; color: var(--destructive) }
+  .alert ul { margin: 0 0 8px; padding-left: 18px }
+  .alert li { margin-bottom: 2px }
+  .alert-note { color: var(--muted-foreground); font-size: 13px; margin: 0 }
+
+  .alert-list { list-style: none; margin: 0 0 10px; padding: 0 }
+  .alert-list li { padding: 7px 0; border-top: 1px solid
+                   color-mix(in oklab, var(--destructive) 22%, transparent) }
+  .alert-list li:first-child { border-top: 0; padding-top: 2px }
+  .warn-name { font-weight: 500; display: block }
+  .warn-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center;
+               margin-top: 3px; font-size: 13px; color: var(--muted-foreground) }
+  .warn-pct { display: flex; align-items: center; gap: 7px; min-width: 128px }
+  .warn-pct .bar { width: 68px; min-width: 0 }
+  .warn-short { color: var(--destructive); font-weight: 500 }
+
+  /* tables carry the lists on a desktop window */
+  .tbl-scroll { overflow-x: auto }
+  /* no DOCTYPE in the shell means quirks mode, where a table does not inherit
+     color or font from its parent — state both explicitly. */
+  .tbl { width: 100%; border-collapse: collapse; min-width: 860px;
+         color: inherit; font: inherit }
+  .tbl td { color: inherit }
+  .tbl th {
+    text-align: left; font-size: 12px; font-weight: 500; color: var(--muted-foreground);
+    padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .tbl td { padding: 11px 14px; border-top: 1px solid var(--border); vertical-align: middle }
+  .tbl tbody tr:first-child td { border-top: 0 }
+  .tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+  .tbl .nowrap { white-space: nowrap }
+  .tbl .name { font-weight: 500 }
+  .tbl td.name > a, .tbl td > div.name { display: block; min-width: 178px }
+  .tbl td.name > a { color: inherit; text-decoration: none }
+  .tbl td.name > a:hover { text-decoration: underline }
+  .tbl tr.late .num.short { color: var(--destructive); font-weight: 500 }
+  .tbl tr.rank-late td:first-child { color: var(--destructive); font-weight: 600 }
+  .tbl td.rank { width: 34px; text-align: center; color: var(--muted-foreground); font-weight: 600 }
+  .tbl tr.group-row td {
+    background: var(--muted); font-weight: 600; padding-top: 10px; padding-bottom: 10px;
+  }
+  .tbl tr.group-row .group-sum { font-weight: 400; color: var(--muted-foreground); font-size: 13px }
+  .tbl .cell-actions { text-align: right; white-space: nowrap }
+
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 99px; white-space: nowrap;
+    font-size: 12px; font-weight: 500; border: 1px solid var(--border);
+    background: var(--secondary); color: var(--secondary-foreground);
+  }
+  .badge-dev { background: var(--primary); color: var(--primary-foreground); border-color: transparent }
+  .badge-status { border-color: var(--border); background: var(--background); color: var(--muted-foreground) }
+  .badge-doing { border-color: color-mix(in oklab, var(--primary) 55%, var(--border));
+                 color: color-mix(in oklab, var(--primary) 45%, var(--foreground));
+                 background: color-mix(in oklab, var(--primary) 14%, var(--background)) }
+  .badge-done { border-color: var(--border); background: var(--muted); color: var(--muted-foreground) }
+  .meta-text { color: var(--muted-foreground); font-size: 13px }
+  .meta-late { color: var(--destructive); font-size: 13px; font-weight: 500 }
+  .dot { color: var(--border) }
+  .ref-link { font-size: 13px; text-decoration: none;
+              color: color-mix(in oklab, var(--primary) 45%, var(--foreground)) }
+  .ref-link:hover { text-decoration: underline }
+
+  .empty { text-align: center; padding: 44px 24px }
+  .empty h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px }
+  .empty p { color: var(--muted-foreground); font-size: 13px; margin: 0 0 16px }
+
+  .field { margin-bottom: 18px }
+  .field > label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px }
+  .field-optional { color: var(--muted-foreground); font-weight: 400 }
+  .field-hint { color: var(--muted-foreground); font-size: 12px; margin: 6px 0 0 }
+  input[type=text], input[type=url], input[type=number], select, textarea {
+    width: 100%; padding: 8px 11px; font: inherit; font-size: 14px;
+    color: var(--foreground); background: var(--background);
+    border: 1px solid var(--input); border-radius: calc(var(--radius) * 0.8);
+  }
+  textarea { min-height: 76px; resize: vertical; line-height: 1.6 }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0 }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--ring); outline-offset: 1px;
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px }
+  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 16px }
+  .seg { display: flex; gap: 8px }
+  .seg button {
+    flex: 1; padding: 8px 10px; font: inherit; font-size: 14px; cursor: pointer;
+    background: var(--background); color: var(--foreground);
+    border: 1px solid var(--input); border-radius: calc(var(--radius) * 0.8);
+  }
+  .seg button.on { background: var(--primary); color: var(--primary-foreground); border-color: transparent }
+  .seg-sm button { padding: 5px 10px; font-size: 13px; white-space: nowrap }
+  .with-suffix { display: flex; align-items: center; gap: 8px }
+  .with-suffix input { flex: 1; text-align: right }
+  .with-suffix input[type=text], .with-suffix input[type=url] { text-align: left }
+  .suffix { color: var(--muted-foreground); font-size: 13px; flex: none }
+
+  .datefield { position: relative }
+  .datefield-trigger {
+    width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 8px 11px; font: inherit; font-size: 14px; cursor: pointer; text-align: left;
+    color: var(--foreground); background: var(--background);
+    border: 1px solid var(--input); border-radius: calc(var(--radius) * 0.8);
+  }
+  .datefield-trigger .meta-text { font-size: 12px }
+  .cal {
+    position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; width: 322px; max-width: 100%;
+    padding: 12px; background: var(--popover); color: var(--popover-foreground);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 8px 24px -8px rgb(0 0 0 / 22%);
+  }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px }
+  .cal-month { font-weight: 600; font-size: 14px }
+  .cal-nav { display: flex; gap: 4px }
+  .cal-nav button {
+    width: 26px; height: 26px; padding: 0; font: inherit; cursor: pointer; line-height: 1;
+    background: var(--background); color: var(--foreground);
+    border: 1px solid var(--input); border-radius: calc(var(--radius) * 0.6);
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--muted-foreground); padding: 2px 0 4px }
+  .cal-cell {
+    display: flex; flex-direction: column; align-items: center; gap: 1px; justify-content: center;
+    height: 42px; padding: 2px 0; font: inherit; font-size: 13px; cursor: pointer;
+    background: var(--background); color: var(--foreground);
+    border: 1px solid transparent; border-radius: calc(var(--radius) * 0.6);
+  }
+  .cal-cell:hover { border-color: var(--input) }
+  .cal-load { font-size: 10px; line-height: 1.2; color: var(--muted-foreground) }
+  .cal-cell.weekend { color: var(--muted-foreground) }
+  .cal-cell.other, .cal-cell.other.weekend {
+    color: color-mix(in oklab, var(--muted-foreground) 55%, transparent); cursor: default;
+  }
+  .cal-cell.other:hover { border-color: transparent }
+  .cal-cell.today { border-color: var(--primary) }
+  .cal-cell.full .cal-load { color: var(--destructive); font-weight: 600 }
+  .cal-cell.on { background: var(--primary); color: var(--primary-foreground); border-color: transparent }
+  .cal-cell.on .cal-load { color: var(--primary-foreground) }
+  .cal-legend { margin: 8px 2px 0; font-size: 11px; color: var(--muted-foreground) }
+
+  .suggest {
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+    margin-top: 8px; padding: 10px 12px; font-size: 13px;
+    border: 1px dashed var(--border); border-radius: calc(var(--radius) * 0.8);
+    background: var(--muted); color: var(--muted-foreground);
+  }
+  .suggest strong { color: var(--foreground); font-weight: 600 }
+
+  .impact {
+    padding: 12px 14px; margin-bottom: 18px; font-size: 13px; border-radius: var(--radius);
+    border: 1px solid color-mix(in oklab, var(--destructive) 40%, var(--border));
+    background: color-mix(in oklab, var(--destructive) 7%, var(--background));
+  }
+  .impact b { color: var(--destructive) }
+  .impact.ok { border-color: var(--border); background: var(--muted) }
+  .impact.ok b { color: var(--foreground) }
+
+  .btn {
+    padding: 9px 16px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+    border-radius: calc(var(--radius) * 0.8); border: 1px solid transparent;
+    background: var(--primary); color: var(--primary-foreground);
+  }
+  .btn-ghost { background: transparent; color: var(--foreground); border-color: var(--input) }
+  .btn-ghost.on { background: var(--primary); color: var(--primary-foreground); border-color: transparent }
+  .btn-sm { padding: 4px 10px; font-size: 13px }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; flex-wrap: wrap }
+
+  /* collapsible section */
+  .collapse {
+    background: var(--card); color: var(--card-foreground); margin-top: 16px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .collapse > summary {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 14px 18px; cursor: pointer; list-style: none;
+    font-size: 15px; font-weight: 600;
+  }
+  .collapse > summary::-webkit-details-marker { display: none }
+  .collapse > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px }
+  .collapse-caret { color: var(--muted-foreground); font-size: 11px; transition: transform .15s }
+  .collapse[open] .collapse-caret { transform: rotate(90deg) }
+  .collapse-sum { font-weight: 400; font-size: 13px; color: var(--muted-foreground) }
+  .collapse > .tbl-scroll { border-top: 1px solid var(--border) }
+  .collapse-foot { padding: 12px 18px; border-top: 1px solid var(--border); font-size: 13px }
+
+  /* gantt */
+  .gantt-scroll { overflow-x: auto }
+  .gantt { min-width: 924px }
+  .gantt-row { display: flex; align-items: stretch; border-top: 1px solid var(--border) }
+  .gantt-row.head { border-top: 0 }
+  .gantt-row.group { background: var(--muted) }
+  .gantt-label { flex: none; width: 210px; padding: 9px 14px; min-width: 0 }
+  .gantt-name { font-size: 13px; font-weight: 500; display: block; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap }
+  .gantt-name a { color: inherit; text-decoration: none }
+  .gantt-name a:hover { text-decoration: underline }
+  .gantt-sub { font-size: 11px; color: var(--muted-foreground); display: block;
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .gantt-cols { flex: none; display: grid; grid-template-columns: repeat(17, 42px);
+                position: relative; min-height: 34px }
+  .gantt-row.head .gantt-cols { min-height: 40px }
+  .gantt-cell { grid-row: 1; border-left: 1px solid var(--border); height: 100% }
+  .gantt-cell.weekstart { border-left-color: var(--muted-foreground) }
+  .gantt-cell.today { background: color-mix(in oklab, var(--primary) 8%, transparent) }
+  .gantt-head-cell {
+    grid-row: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; font-size: 11px; line-height: 1.25; color: var(--muted-foreground);
+    border-left: 1px solid var(--border);
+  }
+  .gantt-head-cell.weekstart { border-left-color: var(--muted-foreground) }
+  .gantt-head-cell.today { color: var(--foreground); font-weight: 600 }
+  .gantt-bar {
+    grid-row: 1; align-self: center; height: 16px; border-radius: 4px;
+    background: var(--primary); margin: 0 2px;
+  }
+  .gantt-bar.over { background: var(--destructive) }
+  .gantt-due {
+    grid-row: 1; justify-self: end; width: 0; height: 28px; align-self: center;
+    border-right: 2px solid var(--foreground); z-index: 2;
+  }
+  .gantt-legend {
+    display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+    padding: 12px 18px 16px; font-size: 12px; color: var(--muted-foreground);
+  }
+  .legend-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px;
+                   margin-right: 6px; vertical-align: -1px }
+  .legend-swatch.plan { background: var(--primary) }
+  .legend-swatch.over { background: var(--destructive) }
+  .legend-due { display: inline-block; width: 2px; height: 12px; background: var(--foreground);
+                margin-right: 6px; vertical-align: -2px }
+
+  /* detail */
+  .detail-head { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 8px }
+  .detail-head h1 { flex: 1; min-width: 220px }
+  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px }
+  .fact-label { font-size: 12px; color: var(--muted-foreground); margin: 0 }
+  .fact-value { margin: 0; font-weight: 500 }
+  .fact-note { font-size: 12px; color: var(--muted-foreground); font-weight: 400 }
+  .why-note { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border);
+              font-size: 13px; color: var(--muted-foreground) }
+  .ref-list { list-style: none; margin: 0; padding: 0 }
+  .ref-list li { display: flex; gap: 10px; align-items: center; padding: 9px 0;
+                 border-top: 1px solid var(--border) }
+  .ref-list li:first-child { border-top: 0 }
+  .ref-list .ref-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                        white-space: nowrap }
+  .history { list-style: none; margin: 0; padding: 0 }
+  .history li { display: flex; gap: 18px; padding: 12px 0; border-top: 1px solid var(--border) }
+  .history li:first-child { border-top: 0 }
+  .history-when { flex: none; width: 96px; font-size: 13px; color: var(--muted-foreground) }
+  .history-kind { flex: none; width: 96px }
+  .history-what { flex: 1; min-width: 0 }
+  .history-what p { margin: 0 }
+  .history-why { font-size: 13px; color: var(--muted-foreground) }
+
+  /* progress */
+  .bar { height: 6px; border-radius: 99px; background: var(--muted); overflow: hidden; min-width: 60px }
+  .bar > span { display: block; height: 100%; background: var(--primary) }
+  .pct-cell { display: flex; align-items: center; gap: 8px }
+  .pct-num { font-variant-numeric: tabular-nums; min-width: 38px; text-align: right }
+
+  .with-suffix .wrap-hours-input { width: 84px; flex: none }
+  .with-suffix .wrap-pct-input { width: 70px; flex: none }
+  .wrap-derived { font-size: 12px; color: var(--muted-foreground); white-space: nowrap }
+  .wrap-derived.none { opacity: 0.5 }
+
+  .meeting {
+    display: flex; gap: 14px; align-items: center; padding: 14px 18px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--muted); margin-bottom: 16px;
+  }
+  .meeting-main { flex: 1; min-width: 0 }
+  .meeting-title { font-weight: 500; margin: 0 0 3px }
+  .meeting-sub { color: var(--muted-foreground); font-size: 12px; margin: 0 }
+
+  .total {
+    display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+    padding: 14px 18px; border-top: 1px solid var(--border);
+  }
+  .total-num { font-size: 16px; font-weight: 600 }
+  .total-why { color: var(--muted-foreground); font-size: 13px }
+
+  .saved {
+    display: flex; gap: 12px; padding: 14px 16px; margin-bottom: 20px;
+    border: 1px solid color-mix(in oklab, var(--primary) 40%, var(--border));
+    border-radius: var(--radius);
+    background: color-mix(in oklab, var(--primary) 8%, var(--background));
+  }
+  .saved p { margin: 0 }
+  .saved-title { font-weight: 600; margin-bottom: 4px !important }
+  .saved-note { color: var(--muted-foreground); font-size: 13px }
+
+  /* records */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px }
+  .stat {
+    padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card);
+  }
+  .stat-label { font-size: 12px; color: var(--muted-foreground); margin: 0 0 2px }
+  .stat-num { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em }
+  .stat-sub { font-size: 12px; color: var(--muted-foreground); margin: 2px 0 0 }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start }
+  .two-col .card + .card { margin-top: 0 }
+
+  /* narrow windows keep working, but the layout is sized for a desktop window */
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+    .two-col { grid-template-columns: 1fr }
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  }
+  @media (max-width: 680px) {
+    .row2, .row3, .facts, .stats { grid-template-columns: 1fr }
+    .meeting { flex-wrap: wrap }
+    .app-nav { flex-wrap: wrap }
+    .app-brand { width: 100%; margin-right: 0; padding-bottom: 8px }
+    .history li { flex-wrap: wrap; gap: 4px 12px }
+    .history-kind { width: auto }
+  }
+  .sh-vp-390 .row2, .sh-vp-390 .row3, .sh-vp-390 .facts, .sh-vp-390 .stats,
+  .sh-vp-390 .two-col { grid-template-columns: 1fr }
+  .sh-vp-390 .meeting { flex-wrap: wrap }
+  .sh-vp-390 .app-nav { flex-wrap: wrap }
+  .sh-vp-390 .app-brand { width: 100%; margin-right: 0; padding-bottom: 8px }
+  .sh-vp-390 .cal { width: 300px }
+  .sh-vp-390 .history li { flex-wrap: wrap; gap: 4px 12px }
+  .sh-vp-390 .history-kind { width: auto }
+  .sh-vp-768 .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .sh-vp-768 .two-col { grid-template-columns: 1fr }
+</style>
+
+<header class="sh-bar">
+  <b>proto</b>
+  <label class="sh-control"><span class="sh-control-label">screen</span><select id="sh-screen"></select></label>
+  <span class="sh-spacer"></span>
+  <label class="sh-control"><span class="sh-control-label">state</span><select id="sh-state"></select></label>
+  <button id="sh-vp">vp: full (m)</button>
+  <div class="sh-theme" id="sh-theme" role="group" aria-label="theme (t)" hidden>
+    <button data-theme="light">light</button><button data-theme="dark">dark</button>
+  </div>
+</header>
+
+<main class="sh-stage">
+
+  <section class="app" data-screen="morning" data-title="아침" data-states="등록된 업무 없음">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning" class="on">아침</a>
+      <a href="#tasks">업무</a>
+      <a href="#new-task">등록</a>
+      <a href="#wrap-up">퇴근 전</a>
+      <a href="#records">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <div class="page-head">
+      <h1>2026년 9월 17일 목요일</h1>
+      <p class="page-sub">오늘 할 일 순서와 앞으로의 병목을 확인합니다.</p>
+    </div>
+
+    <div class="capacity" data-component="Card">
+      <span class="capacity-num">오늘 5.0시간</span>
+      <span class="capacity-why">근무 8시간에서 최근 10근무일 평균 회의 3.0시간을 뺐습니다.</span>
+    </div>
+
+    <div class="alert" role="status" data-component="Alert" data-when="Default">
+      <span class="alert-mark" aria-hidden="true">!</span>
+      <div>
+        <p class="alert-title">이대로 가면 마감을 못 맞추는 업무가 2건 있습니다</p>
+        <ul class="alert-list">
+          <li>
+            <span class="warn-name">차선 인식 모델 v3 정확도 개선</span>
+            <span class="warn-meta">
+              <span class="warn-pct">진행률 20%
+                <span class="bar"><span style="width:20%"></span></span>
+              </span>
+              <span>9월 22일(화) 마감</span>
+              <span class="warn-short">2시간 모자람</span>
+            </span>
+          </li>
+          <li>
+            <span class="warn-name">야간 주행 데이터셋 라벨링 기준 검토</span>
+            <span class="warn-meta">
+              <span class="warn-pct">아직 시작 전
+                <span class="bar"><span style="width:0%"></span></span>
+              </span>
+              <span>9월 23일(수) 마감</span>
+              <span class="warn-short">1시간 모자람</span>
+            </span>
+          </li>
+        </ul>
+        <p class="alert-note">지금이면 협조를 요청하거나 요청자에게 일정을 다시 제안할 수 있습니다.</p>
+      </div>
+    </div>
+
+    <div class="card" data-component="Card" data-when="Default">
+      <div class="card-head">
+        <h2>오늘 할 일</h2>
+        <p class="card-desc">마감을 못 맞출 업무를 먼저, 그다음은 마감이 이른 순입니다.</p>
+      </div>
+      <div class="card-body card-body-flush">
+        <div class="tbl-scroll">
+          <table class="tbl" data-component="Table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>업무</th>
+                <th>구분</th>
+                <th>진행률</th>
+                <th class="num">마감</th>
+                <th class="num">남은</th>
+                <th class="num">오늘 몫</th>
+                <th class="num">상황</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="late rank-late">
+                <td class="rank">1</td>
+                <td class="name"><a href="#task-detail">차선 인식 모델 v3 정확도 개선</a></td>
+                <td class="nowrap"><span class="badge badge-dev" data-component="Badge">주요 개발</span> <span class="badge badge-status badge-doing" data-component="Badge">진행 중</span></td>
+                <td><span class="pct-cell"><span class="pct-num">20%</span><span class="bar" style="flex:1"><span style="width:20%"></span></span></span></td>
+                <td class="num">9/22 (화)</td>
+                <td class="num">20시간</td>
+                <td class="num">3.0시간</td>
+                <td class="num short">2시간 모자람</td>
+              </tr>
+              <tr class="late rank-late">
+                <td class="rank">2</td>
+                <td class="name"><a href="#task-detail">야간 주행 데이터셋 라벨링 기준 검토</a></td>
+                <td class="nowrap"><span class="badge" data-component="Badge">검토 요청</span> <span class="badge badge-status" data-component="Badge">진행 전</span></td>
+                <td class="meta-text">—</td>
+                <td class="num">9/23 (수)</td>
+                <td class="num">4시간</td>
+                <td class="num meta-text">—</td>
+                <td class="num short">1시간 모자람</td>
+              </tr>
+              <tr>
+                <td class="rank">3</td>
+                <td class="name"><a href="#task-detail">협력사 센서 스펙 검토 회신</a></td>
+                <td class="nowrap"><span class="badge" data-component="Badge">검토 요청</span> <span class="badge badge-status" data-component="Badge">진행 전</span></td>
+                <td class="meta-text">—</td>
+                <td class="num">9/18 (금)</td>
+                <td class="num">2시간</td>
+                <td class="num">2.0시간</td>
+                <td class="num meta-text">—</td>
+              </tr>
+              <tr>
+                <td class="rank">4</td>
+                <td class="name"><a href="#task-detail">모델 배포 스크립트 인수인계 문서 정리</a></td>
+                <td class="nowrap"><span class="badge" data-component="Badge">검토 요청</span> <span class="badge badge-status badge-doing" data-component="Badge">진행 중</span></td>
+                <td class="meta-text">기록 없음</td>
+                <td class="num">9/25 (금)</td>
+                <td class="num">2시간</td>
+                <td class="num meta-text">—</td>
+                <td class="num meta-text">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-component="Empty" data-when="등록된 업무 없음">
+      <div class="empty">
+        <h3>아직 등록된 업무가 없습니다</h3>
+        <p>업무를 등록하면 내일 아침부터 순서와 경고가 여기에 나옵니다.</p>
+        <a href="#new-task"><button class="btn" data-component="Button">업무 등록하러 가기</button></a>
+      </div>
+    </div>
+
+  </section>
+
+  <section class="app" data-screen="tasks" data-title="업무">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning">아침</a>
+      <a href="#tasks" class="on">업무</a>
+      <a href="#new-task">등록</a>
+      <a href="#wrap-up">퇴근 전</a>
+      <a href="#records">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <div class="page-head-row">
+      <div class="page-head">
+        <h1>업무</h1>
+        <p class="page-sub">아직 끝나지 않은 업무 4건 · 남은 시간 합계 28시간 · 완료한 업무는 실적에서 봅니다</p>
+      </div>
+      <div class="seg seg-sm" id="view-seg" role="group" aria-label="보기">
+        <button type="button" class="on" data-view="all" data-component="Button">전체</button>
+        <button type="button" data-view="project" data-component="Button">프로젝트별</button>
+        <button type="button" data-view="timeline" data-component="Button">일정</button>
+      </div>
+    </div>
+
+    <div class="card" id="view-all" data-component="Card">
+      <div class="card-head">
+        <h2>전체</h2>
+        <p class="card-desc">마감이 이른 순입니다.</p>
+      </div>
+      <div class="card-body card-body-flush">
+        <div class="tbl-scroll">
+          <table class="tbl" data-component="Table">
+            <thead>
+              <tr>
+                <th>업무</th>
+                <th>구분</th>
+                <th>프로젝트</th>
+                <th class="num">마감</th>
+                <th class="num">남은</th>
+                <th>진행률</th>
+                <th class="num">상황</th>
+              </tr>
+            </thead>
+            <tbody id="all-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="view-project" data-component="Card" hidden>
+      <div class="card-head">
+        <h2>프로젝트별</h2>
+        <p class="card-desc">끝난 프로젝트는 완료 처리하면 등록할 때 고르는 목록에서 빠집니다.</p>
+      </div>
+      <div class="card-body card-body-flush">
+        <div class="tbl-scroll">
+          <table class="tbl" data-component="Table">
+            <thead>
+              <tr>
+                <th>업무</th>
+                <th>구분</th>
+                <th class="num">마감</th>
+                <th class="num">남은</th>
+                <th>진행률</th>
+                <th class="num">상황</th>
+              </tr>
+            </thead>
+            <tbody id="project-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="view-timeline" data-component="Card" hidden>
+      <div class="card-head">
+        <h2>일정</h2>
+        <p class="card-desc">지금 일정대로 갈 때 각 업무가 언제부터 언제까지 물려 있는지 보여줍니다.</p>
+      </div>
+      <div class="card-body card-body-flush">
+        <div class="gantt-scroll">
+          <div class="gantt" id="gantt"></div>
+        </div>
+        <div class="gantt-legend">
+          <span><span class="legend-swatch plan"></span>마감 안에 하는 몫</span>
+          <span><span class="legend-swatch over"></span>마감을 넘기는 몫</span>
+          <span><span class="legend-due"></span>마감 요청일</span>
+        </div>
+      </div>
+    </div>
+
+    <details class="collapse" id="recent-done" data-component="new:Collapsible">
+      <summary>
+        <span class="collapse-caret" aria-hidden="true">▶</span>
+        최근 완료
+        <span class="collapse-sum">2주 안에 끝낸 업무 3건 · 28.5시간</span>
+      </summary>
+      <div class="tbl-scroll">
+        <table class="tbl" data-component="Table">
+          <thead>
+            <tr>
+              <th>업무</th>
+              <th>구분</th>
+              <th>프로젝트</th>
+              <th class="num">완료</th>
+              <th class="num">예상</th>
+              <th class="num">실제</th>
+              <th class="num">차이</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="name"><a href="#task-detail">센서 캘리브레이션 결과 정리</a></td>
+              <td class="nowrap"><span class="badge" data-component="Badge">검토 요청</span>
+                <span class="badge badge-status badge-done" data-component="Badge">완료</span></td>
+              <td class="meta-text nowrap">ADAS 2026</td>
+              <td class="num">9/15 (화)</td><td class="num">3.0</td><td class="num">3.5</td>
+              <td class="num meta-late">+0.5</td>
+            </tr>
+            <tr>
+              <td class="name"><a href="#task-detail">모델 학습 파이프라인 v2 이관</a></td>
+              <td class="nowrap"><span class="badge badge-dev" data-component="Badge">주요 개발</span>
+                <span class="badge badge-status badge-done" data-component="Badge">완료</span></td>
+              <td class="meta-text nowrap">데이터 파이프라인</td>
+              <td class="num">9/11 (금)</td><td class="num">14.0</td><td class="num">16.0</td>
+              <td class="num meta-late">+2.0</td>
+            </tr>
+            <tr>
+              <td class="name"><a href="#task-detail">제어 로직 단위 테스트 보강</a></td>
+              <td class="nowrap"><span class="badge badge-dev" data-component="Badge">주요 개발</span>
+                <span class="badge badge-status badge-done" data-component="Badge">완료</span></td>
+              <td class="meta-text nowrap">차량 제어 리팩터링</td>
+              <td class="num">9/9 (수)</td><td class="num">8.0</td><td class="num">9.0</td>
+              <td class="num meta-late">+1.0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="collapse-foot meta-text">
+        더 예전에 끝낸 업무는 <a class="ref-link" href="#records">실적</a>에서 월과 프로젝트로 묶어 봅니다.
+      </p>
+    </details>
+  </section>
+
+  <section class="app" data-screen="task-detail" data-title="업무 상세" data-states="수정 중">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning">아침</a>
+      <a href="#tasks" class="on">업무</a>
+      <a href="#new-task">등록</a>
+      <a href="#wrap-up">퇴근 전</a>
+      <a href="#records">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <a class="back-link" href="#tasks">← 업무 목록</a>
+
+    <div class="detail-head">
+      <h1>차선 인식 모델 v3 정확도 개선</h1>
+      <div class="actions" style="margin-top: 0" data-when="Default">
+        <button class="btn btn-ghost" id="d-edit" data-component="Button">수정</button>
+        <a href="#task-history"><button class="btn btn-ghost" data-component="Button">히스토리</button></a>
+      </div>
+    </div>
+    <p class="page-sub" style="margin-bottom: 20px">
+      <span class="badge badge-dev" data-component="Badge">주요 개발</span>
+      <span class="badge badge-status badge-doing" data-component="Badge">진행 중</span>
+      <span class="meta-text">ADAS 2026</span>
+    </p>
+
+    <div class="alert" role="status" data-component="Alert" data-when="Default">
+      <span class="alert-mark" aria-hidden="true">!</span>
+      <div>
+        <p class="alert-title">마감을 2시간 넘길 것 같습니다</p>
+        <p class="alert-note">화요일까지 쓸 수 있는 20시간에 22시간이 필요합니다. 지금이면 일정을 다시 제안할 수 있습니다.</p>
+      </div>
+    </div>
+
+    <div class="card" data-component="Card" data-when="Default">
+      <div class="card-head"><h2>지금 상태</h2></div>
+      <div class="card-body">
+        <div class="facts">
+          <div>
+            <p class="fact-label">마감 요청일</p>
+            <p class="fact-value">2026년 9월 22일 (화)
+              <span class="fact-note">처음에는 9월 19일</span>
+            </p>
+          </div>
+          <div>
+            <p class="fact-label">진행률</p>
+            <p class="fact-value">
+              20%
+              <span class="bar" style="display:inline-block; width:80px; vertical-align:middle">
+                <span style="width:20%"></span>
+              </span>
+            </p>
+          </div>
+          <div>
+            <p class="fact-label">지금까지 쓴 시간</p>
+            <p class="fact-value">5시간</p>
+          </div>
+          <div>
+            <p class="fact-label">지금 보는 총 규모</p>
+            <p class="fact-value">25시간 <span class="fact-note">진행률로 다시 잡은 값</span></p>
+          </div>
+          <div>
+            <p class="fact-label">처음 예상</p>
+            <p class="fact-value">20시간</p>
+          </div>
+          <div>
+            <p class="fact-label">남은 시간</p>
+            <p class="fact-value">20시간</p>
+          </div>
+        </div>
+        <p class="why-note">
+          5시간을 써서 20%가 끝났으니 전체를 25시간짜리로 봅니다. 남은 20시간이 여기서 나옵니다.
+        </p>
+      </div>
+    </div>
+
+    <div class="card" data-component="Card" data-when="Default">
+      <div class="card-head">
+        <h2>참조 자료</h2>
+        <p class="card-desc">요청 메일이나 사내 시스템 주소를 필요할 때 더 붙입니다.</p>
+      </div>
+      <div class="card-body">
+        <ul class="ref-list" id="d-refs">
+          <li>
+            <a class="ref-link ref-name" href="#task-detail">사내 이슈 #4182</a>
+            <button class="btn btn-ghost btn-sm ref-remove" data-component="Button">삭제</button>
+          </li>
+          <li>
+            <a class="ref-link ref-name" href="#task-detail">v3 정확도 목표 합의 메일</a>
+            <button class="btn btn-ghost btn-sm ref-remove" data-component="Button">삭제</button>
+          </li>
+        </ul>
+        <div style="margin-top: 12px">
+          <div class="with-suffix">
+            <input type="text" id="d-ref-name" placeholder="자료 이름" data-component="Input">
+            <button class="btn btn-ghost btn-sm" id="d-ref-add" data-component="Button">추가</button>
+          </div>
+          <p class="field-hint" id="d-ref-error" style="color: var(--destructive)" hidden>
+            자료 이름을 입력해 주세요.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-component="Card" data-when="수정 중">
+      <div class="card-head">
+        <h2>업무 수정</h2>
+        <p class="card-desc">바꾼 내용은 히스토리에 이유와 함께 남습니다.</p>
+      </div>
+      <div class="card-body">
+        <div class="field" data-component="Field">
+          <label for="d-name">업무명</label>
+          <input type="text" id="d-name" value="차선 인식 모델 v3 정확도 개선" data-component="Input">
+        </div>
+        <div class="row2">
+          <div class="field" data-component="Field">
+            <label for="d-due">마감 요청일</label>
+            <div class="datefield" data-component="new:DueDatePicker">
+              <button type="button" class="datefield-trigger" id="d-due"
+                      aria-haspopup="dialog" data-component="Button">
+                <span>2026년 9월 22일 (화)</span>
+                <span class="meta-text">그날은 이미 꽉 찼습니다</span>
+              </button>
+            </div>
+          </div>
+          <div class="field" data-component="Field">
+            <label for="d-project">프로젝트</label>
+            <select id="d-project" data-component="Select">
+              <option selected>ADAS 2026</option>
+              <option>데이터 파이프라인</option>
+              <option>프로젝트 없음</option>
+            </select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field" data-component="Field">
+            <label>업무 유형</label>
+            <div class="seg" id="d-kind" role="group" aria-label="업무 유형">
+              <button type="button" data-kind="dev" class="on" data-component="Button">주요 모델 개발</button>
+              <button type="button" data-kind="review" data-component="Button">검토 요청</button>
+            </div>
+          </div>
+          <div class="field" data-component="Field">
+            <label for="d-hours">예상 소요 시간</label>
+            <div class="with-suffix">
+              <input type="number" id="d-hours" step="0.5" min="0" inputmode="decimal" value="25" data-component="Input">
+              <span class="suffix">시간</span>
+            </div>
+            <p class="field-hint">진행률을 새로 적으면 이 값이 다시 계산됩니다.</p>
+          </div>
+        </div>
+        <div class="field" data-component="Field">
+          <label for="d-reason">바꾼 이유 <span class="field-optional">(선택)</span></label>
+          <textarea id="d-reason" placeholder="예: 시험 투입 일정이 밀려 마감을 다시 잡음" data-component="Textarea"></textarea>
+        </div>
+        <div class="actions">
+          <button class="btn" id="d-save" data-component="Button">저장</button>
+          <button class="btn btn-ghost" id="d-cancel" data-component="Button">취소</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="app" data-screen="task-history" data-title="업무 히스토리">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning">아침</a>
+      <a href="#tasks" class="on">업무</a>
+      <a href="#new-task">등록</a>
+      <a href="#wrap-up">퇴근 전</a>
+      <a href="#records">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <a class="back-link" href="#task-detail">← 업무 상세</a>
+
+    <div class="page-head">
+      <h1>히스토리</h1>
+      <p class="page-sub">차선 인식 모델 v3 정확도 개선 · 9월 12일 등록 이후 12건</p>
+    </div>
+
+    <div class="card" data-component="Card">
+      <div class="card-body">
+        <ul class="history">
+          <li>
+            <span class="history-when">9월 17일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">시간 기록</span></span>
+            <div class="history-what"><p>3시간 기록 · 누적 5시간</p></div>
+          </li>
+          <li>
+            <span class="history-when">9월 17일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">진행률</span></span>
+            <div class="history-what">
+              <p>진행률을 12%에서 20%로 변경</p>
+              <p class="history-why">총 규모가 25시간으로 다시 잡힘</p>
+            </div>
+          </li>
+          <li>
+            <span class="history-when">9월 16일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">시간 기록</span></span>
+            <div class="history-what"><p>1시간 기록 · 누적 2시간</p></div>
+          </li>
+          <li>
+            <span class="history-when">9월 16일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">자료</span></span>
+            <div class="history-what"><p>참조 자료 추가 · v3 정확도 목표 합의 메일</p></div>
+          </li>
+          <li>
+            <span class="history-when">9월 15일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">마감</span></span>
+            <div class="history-what">
+              <p>마감 요청일을 9월 19일에서 9월 22일로 변경</p>
+              <p class="history-why">시험 투입 일정이 한 주 밀림</p>
+            </div>
+          </li>
+          <li>
+            <span class="history-when">9월 15일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">예상 시간</span></span>
+            <div class="history-what">
+              <p>예상 소요 시간을 20시간에서 24시간으로 변경</p>
+              <p class="history-why">야간 데이터셋이 추가되어 학습 범위가 늘어남</p>
+            </div>
+          </li>
+          <li>
+            <span class="history-when">9월 15일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">시간 기록</span></span>
+            <div class="history-what"><p>1시간 기록 · 누적 1시간</p></div>
+          </li>
+          <li>
+            <span class="history-when">9월 14일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">상태</span></span>
+            <div class="history-what"><p>진행 전에서 진행 중으로 변경</p></div>
+          </li>
+          <li>
+            <span class="history-when">9월 12일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">자료</span></span>
+            <div class="history-what"><p>참조 자료 추가 · 사내 이슈 #4182</p></div>
+          </li>
+          <li>
+            <span class="history-when">9월 12일</span>
+            <span class="history-kind"><span class="badge" data-component="Badge">등록</span></span>
+            <div class="history-what"><p>등록 · 마감 9월 19일 · 예상 20시간 · ADAS 2026</p></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="app" data-screen="new-task" data-title="등록" data-states="비슷한 기록 없음">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning">아침</a>
+      <a href="#tasks">업무</a>
+      <a href="#new-task" class="on">등록</a>
+      <a href="#wrap-up">퇴근 전</a>
+      <a href="#records">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <div class="page-head">
+      <h1>업무 등록</h1>
+      <p class="page-sub">들어온 업무를 바로 남겨 둡니다.</p>
+    </div>
+
+    <div class="card" data-component="Card">
+      <div class="card-head">
+        <h2>새 업무</h2>
+        <p class="card-desc">업무명과 마감 요청일만 있으면 등록됩니다.</p>
+      </div>
+      <div class="card-body">
+
+        <div class="field" data-component="Field">
+          <label for="t-name">업무명</label>
+          <input type="text" id="t-name" data-component="Input"
+                 value="차량 하네스 변경 건 영향도 검토 회신">
+        </div>
+
+        <div class="row3">
+          <div class="field" data-component="Field">
+            <label for="t-due-trigger">마감 요청일</label>
+            <div class="datefield" data-component="new:DueDatePicker">
+              <button type="button" class="datefield-trigger" id="t-due-trigger"
+                      aria-haspopup="dialog" aria-expanded="false" data-component="Button">
+                <span id="t-due-label">2026년 9월 24일 (목)</span>
+                <span class="meta-text" id="t-due-load">2.0시간 빔</span>
+              </button>
+              <div class="cal" id="t-cal" role="dialog" aria-label="마감 요청일 선택" hidden>
+                <div class="cal-head">
+                  <span class="cal-month" id="cal-month">2026년 9월</span>
+                  <span class="cal-nav">
+                    <button type="button" id="cal-prev" aria-label="이전 달">‹</button>
+                    <button type="button" id="cal-next" aria-label="다음 달">›</button>
+                  </span>
+                </div>
+                <div class="cal-grid" id="cal-grid"></div>
+                <p class="cal-legend">날짜 아래 숫자는 지금 일정대로 갈 때 그날 이미 차 있는 시간입니다.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="field" data-component="Field">
+            <label for="t-project">프로젝트</label>
+            <select id="t-project" data-component="Select"></select>
+            <div id="t-project-new" hidden style="margin-top: 8px">
+              <div class="with-suffix">
+                <input type="text" id="t-project-name" placeholder="새 프로젝트 이름" data-component="Input">
+                <button type="button" class="btn btn-ghost btn-sm" id="t-project-add" data-component="Button">추가</button>
+              </div>
+              <p class="field-hint" id="t-project-error" style="color: var(--destructive)" hidden>
+                프로젝트 이름을 입력해 주세요.
+              </p>
+            </div>
+          </div>
+
+          <div class="field" data-component="Field">
+            <label for="t-hours">예상 소요 시간</label>
+            <div class="with-suffix">
+              <input type="number" id="t-hours" step="0.5" min="0" inputmode="decimal" value="2.5" data-component="Input">
+              <span class="suffix">시간</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field" data-component="Field">
+          <label>업무 유형</label>
+          <div class="seg" id="t-kind" role="group" aria-label="업무 유형">
+            <button type="button" data-kind="dev" data-component="Button">주요 모델 개발</button>
+            <button type="button" data-kind="review" class="on" data-component="Button">검토 요청</button>
+          </div>
+          <div class="suggest" id="t-suggest" data-when="Default">
+            <span id="t-suggest-text">지난 <strong>검토 요청</strong> 6건의 실제 소요 시간 중앙값은 <strong>2.5시간</strong>입니다.</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="t-apply" data-component="Button">예상 시간에 넣기</button>
+          </div>
+          <p class="field-hint" id="t-nosuggest" data-when="비슷한 기록 없음">
+            아직 완료한 검토 요청 기록이 없어 제안할 값이 없습니다. 기록이 쌓이면 여기에 나옵니다.
+          </p>
+        </div>
+
+        <div class="field" data-component="Field">
+          <label for="t-link">참조 링크 <span class="field-optional">(선택)</span></label>
+          <input type="url" id="t-link" placeholder="요청 메일이나 사내 시스템 주소"
+                 value="https://mail.example.com/thread/8271" data-component="Input">
+          <p class="field-hint">등록한 뒤 상세 화면에서 자료를 더 붙일 수 있습니다.</p>
+        </div>
+
+        <div class="impact" id="t-impact" data-component="Alert" data-when="Default">
+          이 업무를 넣으면 마감을 못 맞추는 업무가 <b>2건에서 3건</b>이 됩니다.
+          <span class="meta-text">9월 24일까지 2.0시간만 낼 수 있어 0.5시간 모자랍니다.</span>
+        </div>
+
+        <div class="actions">
+          <button class="btn" id="t-save" data-component="Button">등록</button>
+          <button class="btn btn-ghost" data-component="Button">취소</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="app" data-screen="wrap-up" data-title="퇴근 전" data-states="저장 완료">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning">아침</a>
+      <a href="#tasks">업무</a>
+      <a href="#new-task">등록</a>
+      <a href="#wrap-up" class="on">퇴근 전</a>
+      <a href="#records">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <div class="page-head">
+      <h1>9월 17일 목요일 마감</h1>
+      <p class="page-sub">오늘 쓴 시간과 어디까지 왔는지만 적으면 됩니다.</p>
+    </div>
+
+    <div class="saved" data-component="Alert" data-when="저장 완료">
+      <div>
+        <p class="saved-title">오늘 기록을 저장했습니다.</p>
+        <p class="saved-note">
+          센서 스펙 검토 회신이 완료로 넘어갔습니다. 실제 소요 시간 2.0시간이 검토 요청 추정에 반영됩니다.
+        </p>
+      </div>
+    </div>
+
+    <div class="meeting" data-component="Card">
+      <div class="meeting-main">
+        <p class="meeting-title">오늘 회의에 쓴 시간</p>
+        <p class="meeting-sub">근무 8시간에서 이 시간을 빼서 앞으로의 하루 가용 시간을 잡습니다.</p>
+      </div>
+      <div>
+        <div class="with-suffix">
+          <input type="number" id="w-meeting" class="wrap-hours-input" step="0.5" min="0"
+                 inputmode="decimal" value="3" data-component="Input">
+          <span class="suffix">시간</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-component="Card">
+      <div class="card-head">
+        <h2>오늘의 업무</h2>
+        <p class="card-desc">시간을 적으면 진행 전이던 업무는 진행 중으로 바뀝니다. 진행률을 적으면 남은 시간이 다시 계산됩니다.</p>
+      </div>
+      <div class="card-body card-body-flush">
+        <div class="tbl-scroll">
+          <table class="tbl" data-component="Table">
+            <thead>
+              <tr>
+                <th>업무</th>
+                <th class="num">오늘 쓴 시간</th>
+                <th class="num">진행률</th>
+                <th>다시 잡은 규모</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="wrap-body"></tbody>
+          </table>
+        </div>
+        <div class="total">
+          <span class="total-num" id="w-total">오늘 남긴 시간 8.0시간</span>
+          <span class="total-why" id="w-total-why">업무 5시간 + 회의 3시간. 근무 8시간 중 8.0시간을 남겼습니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="w-save" data-component="Button">오늘 기록 저장</button>
+    </div>
+
+  </section>
+
+  <section class="app" data-screen="records" data-title="실적">
+    <nav class="app-nav" data-component="new:AppShellNav">
+      <span class="app-brand">업무 기록</span>
+      <a href="#morning">아침</a>
+      <a href="#tasks">업무</a>
+      <a href="#new-task">등록</a>
+      <a href="#wrap-up">퇴근 전</a>
+      <a href="#records" class="on">실적</a>
+      <span class="app-spacer"></span>
+    </nav>
+
+    <div class="page-head-row">
+      <div class="page-head">
+        <h1>2026년 실적</h1>
+        <p class="page-sub">완료한 업무를 월과 프로젝트로 묶어 봅니다. KPI를 쓰거나 업무 재분배를 협의할 때 그대로 꺼내 씁니다.</p>
+      </div>
+      <div>
+        <select id="r-year" style="width: 120px" data-component="Select">
+          <option selected>2026년</option>
+          <option>2025년</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat" data-component="Card">
+        <p class="stat-label">완료한 업무</p>
+        <p class="stat-num">42건</p>
+        <p class="stat-sub">9월까지</p>
+      </div>
+      <div class="stat" data-component="Card">
+        <p class="stat-label">들인 시간</p>
+        <p class="stat-num">359.5시간</p>
+        <p class="stat-sub">회의 시간은 따로 집계</p>
+      </div>
+      <div class="stat" data-component="Card">
+        <p class="stat-label">주요 모델 개발</p>
+        <p class="stat-num">16건</p>
+        <p class="stat-sub">243시간 · 전체의 68%</p>
+      </div>
+      <div class="stat" data-component="Card">
+        <p class="stat-label">예상 대비 실제</p>
+        <p class="stat-num">+9%</p>
+        <p class="stat-sub">예상 330시간 · 실제 359.5시간</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card" data-component="Card">
+        <div class="card-head"><h2>월별</h2></div>
+        <div class="card-body card-body-flush">
+          <table class="tbl" style="min-width: 0" data-component="Table">
+            <thead>
+              <tr><th>월</th><th class="num">건수</th><th class="num">시간</th><th>주요 프로젝트</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>9월</td><td class="num">3</td><td class="num">28.5</td><td class="meta-text">데이터 파이프라인</td></tr>
+              <tr><td>8월</td><td class="num">5</td><td class="num">42.0</td><td class="meta-text">ADAS 2026</td></tr>
+              <tr><td>7월</td><td class="num">4</td><td class="num">38.0</td><td class="meta-text">ADAS 2026</td></tr>
+              <tr><td>6월</td><td class="num">6</td><td class="num">51.0</td><td class="meta-text">차량 제어 리팩터링</td></tr>
+              <tr><td>5월</td><td class="num">4</td><td class="num">35.0</td><td class="meta-text">ADAS 2026</td></tr>
+              <tr><td>4월</td><td class="num">5</td><td class="num">44.0</td><td class="meta-text">데이터 파이프라인</td></tr>
+              <tr><td>3월</td><td class="num">6</td><td class="num">48.0</td><td class="meta-text">ADAS 2026</td></tr>
+              <tr><td>2월</td><td class="num">4</td><td class="num">33.0</td><td class="meta-text">차량 제어 리팩터링</td></tr>
+              <tr><td>1월</td><td class="num">5</td><td class="num">40.0</td><td class="meta-text">ADAS 2026</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" data-component="Card">
+        <div class="card-head"><h2>프로젝트별</h2></div>
+        <div class="card-body card-body-flush">
+          <table class="tbl" style="min-width: 0" data-component="Table">
+            <thead>
+              <tr><th>프로젝트</th><th class="num">건수</th><th class="num">시간</th><th class="num">비중</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>ADAS 2026</td><td class="num">18</td><td class="num">168.0</td><td class="num">47%</td></tr>
+              <tr><td>데이터 파이프라인</td><td class="num">12</td><td class="num">112.0</td><td class="num">31%</td></tr>
+              <tr><td>차량 제어 리팩터링 <span class="badge badge-done" data-component="Badge">완료</span></td>
+                  <td class="num">9</td><td class="num">68.5</td><td class="num">19%</td></tr>
+              <tr><td>프로젝트 없음</td><td class="num">3</td><td class="num">11.0</td><td class="num">3%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-component="Card" style="margin-top: 16px">
+      <div class="card-head">
+        <h2>9월에 끝낸 업무</h2>
+        <p class="card-desc">월을 눌러 다른 달로 넘길 수 있습니다.</p>
+      </div>
+      <div class="card-body card-body-flush">
+        <div class="tbl-scroll">
+          <table class="tbl" data-component="Table">
+            <thead>
+              <tr>
+                <th>업무</th><th>유형</th><th>프로젝트</th>
+                <th class="num">마감</th><th class="num">예상</th><th class="num">실제</th><th class="num">차이</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name"><a href="#task-detail">센서 캘리브레이션 결과 정리</a></td>
+                <td><span class="badge" data-component="Badge">검토 요청</span></td>
+                <td class="meta-text nowrap">ADAS 2026</td>
+                <td class="num">9/15 (화)</td><td class="num">3.0</td><td class="num">3.5</td>
+                <td class="num meta-late">+0.5</td>
+              </tr>
+              <tr>
+                <td class="name"><a href="#task-detail">모델 학습 파이프라인 v2 이관</a></td>
+                <td><span class="badge badge-dev" data-component="Badge">주요 개발</span></td>
+                <td class="meta-text nowrap">데이터 파이프라인</td>
+                <td class="num">9/11 (금)</td><td class="num">14.0</td><td class="num">16.0</td>
+                <td class="num meta-late">+2.0</td>
+              </tr>
+              <tr>
+                <td class="name"><a href="#task-detail">제어 로직 단위 테스트 보강</a></td>
+                <td><span class="badge badge-dev" data-component="Badge">주요 개발</span></td>
+                <td class="meta-text nowrap">차량 제어 리팩터링</td>
+                <td class="num">9/9 (수)</td><td class="num">8.0</td><td class="num">9.0</td>
+                <td class="num meta-late">+1.0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  const stage = document.querySelector('.sh-stage');
+  const screens = [...stage.querySelectorAll('[data-screen]')];
+  const screenSelect = document.getElementById('sh-screen');
+  const stateSelect = document.getElementById('sh-state');
+  const vpBtn = document.getElementById('sh-vp');
+  const themeCtl = document.getElementById('sh-theme');
+  const themeBtns = [...themeCtl.querySelectorAll('button')];
+  let current = null;
+  let currentStates = [];
+
+  screens.forEach(s => {
+    const option = document.createElement('option');
+    option.textContent = s.dataset.title || s.dataset.screen;
+    option.value = s.dataset.screen;
+    screenSelect.append(option);
+  });
+  screenSelect.onchange = () => show(screenSelect.value);
+
+  function show(slug) {
+    current = screens.find(s => s.dataset.screen === slug) || screens[0];
+    screens.forEach(s => s.hidden = s !== current);
+    screenSelect.value = current.dataset.screen;
+    history.replaceState(null, '', '#' + current.dataset.screen);
+    buildStates();
+  }
+
+  function buildStates() {
+    const declared = (current.dataset.states || '').split(',').map(x => x.trim()).filter(Boolean);
+    currentStates = ['Default', ...declared.filter(name => name !== 'Default')];
+    stateSelect.innerHTML = '';
+    currentStates.forEach(name => {
+      const option = document.createElement('option');
+      option.textContent = name;
+      option.value = name;
+      stateSelect.append(option);
+    });
+    applyState('Default');
+  }
+
+  function applyState(name) {
+    const active = currentStates.includes(name) ? name : 'Default';
+    current.querySelectorAll('[data-when]').forEach(el => {
+      el.hidden = !el.dataset.when.split(',').map(x => x.trim()).includes(active);
+    });
+    stateSelect.value = active;
+  }
+  stateSelect.onchange = () => applyState(stateSelect.value);
+
+  window.prototypeShell = {
+    showScreen: show,
+    setState: applyState,
+    getScreen: () => current?.dataset.screen,
+    getState: () => stateSelect.value
+  };
+
+  const VPS = ['full', '390', '768'];
+  let vp = VPS.find(v => document.body.classList.contains('sh-vp-' + v)) || 'full';
+  function applyVp() {
+    VPS.forEach(v => document.body.classList.toggle('sh-vp-' + v, v === vp && v !== 'full'));
+    vpBtn.textContent = 'vp: ' + vp + ' (m)';
+    vpBtn.classList.toggle('on', vp !== 'full');
+  }
+  vpBtn.onclick = () => { vp = VPS[(VPS.indexOf(vp) + 1) % VPS.length]; applyVp(); };
+  applyVp();
+
+  const hasDark = [...document.styleSheets].some(sheet => {
+    try {
+      return [...sheet.cssRules].some(rule => (rule.selectorText || '')
+        .split(',').some(part => /\.sh-theme-dark$/.test(part.trim())));
+    } catch { return false }
+  });
+  let dark = false;
+  function applyTheme() {
+    document.documentElement.classList.toggle('sh-theme-dark', dark);
+    document.body.classList.toggle('sh-theme-dark', dark);
+    themeBtns.forEach(b => b.classList.toggle('on', (b.dataset.theme === 'dark') === dark));
+  }
+  themeCtl.hidden = !hasDark;
+  themeBtns.forEach(b => b.onclick = () => { dark = b.dataset.theme === 'dark'; applyTheme(); });
+  applyTheme();
+
+  addEventListener('keydown', e => {
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const i = screens.indexOf(current);
+    if (e.key === 'ArrowRight') show(screens[(i + 1) % screens.length].dataset.screen);
+    if (e.key === 'ArrowLeft') show(screens[(i - 1 + screens.length) % screens.length].dataset.screen);
+    if (e.key === 'm') vpBtn.click();
+    if (e.key === 't' && !themeCtl.hidden) { dark = !dark; applyTheme(); }
+  });
+
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  /* ── 더미 데이터: 아직 끝나지 않은 업무만 업무 화면에 남는다 ── */
+  const PROJECTS = [
+    { name: 'ADAS 2026', archived: false },
+    { name: '데이터 파이프라인', archived: false },
+    { name: '차량 제어 리팩터링', archived: true },
+    { name: '프로젝트 없음', archived: false, fixed: true }
+  ];
+
+  const TASKS = [
+    { name: '차선 인식 모델 v3 정확도 개선', project: 'ADAS 2026', kind: 'dev', status: 'doing',
+      due: '9/22 (화)', left: 20, pct: 20, spent: 5, scale: 25,
+      start: 0, end: 4, dueIdx: 3, short: 2 },
+    { name: '협력사 센서 스펙 검토 회신', project: 'ADAS 2026', kind: 'review', status: 'todo',
+      due: '9/18 (금)', left: 2, pct: 0, spent: 0, scale: 2,
+      start: 0, end: 0, dueIdx: 1, short: 0 },
+    { name: '야간 주행 데이터셋 라벨링 기준 검토', project: '데이터 파이프라인', kind: 'review', status: 'todo',
+      due: '9/23 (수)', left: 4, pct: 0, spent: 0, scale: 4,
+      start: 4, end: 5, dueIdx: 4, short: 1 },
+    { name: '모델 배포 스크립트 인수인계 문서 정리', project: '프로젝트 없음', kind: 'review', status: 'doing',
+      due: '9/25 (금)', left: 2, pct: null, spent: 1, scale: 3,
+      start: 5, end: 5, dueIdx: 6, short: 0 }
+  ];
+
+  const STATUS_LABEL = { todo: '진행 전', doing: '진행 중', done: '완료' };
+  const KIND_LABEL = { dev: '주요 개발', review: '검토 요청' };
+
+  function statusBadge(status) {
+    const cls = status === 'doing' ? ' badge-doing' : status === 'done' ? ' badge-done' : '';
+    return '<span class="badge badge-status' + cls + '" data-component="Badge">' +
+      STATUS_LABEL[status] + '</span>';
+  }
+  function kindBadge(kind) {
+    return '<span class="badge' + (kind === 'dev' ? ' badge-dev' : '') + '" data-component="Badge">' +
+      KIND_LABEL[kind] + '</span>';
+  }
+  function pctCell(t) {
+    if (t.status === 'todo') return '<span class="meta-text">—</span>';
+    if (t.pct === null) return '<span class="meta-text">기록 없음</span>';
+    return '<span class="pct-cell"><span class="pct-num">' + t.pct + '%</span>' +
+      '<span class="bar" style="flex:1"><span style="width:' + t.pct + '%"></span></span></span>';
+  }
+  function shortCell(t) {
+    return t.short ? '<span class="num short">' + t.short + '시간 모자람</span>'
+                   : '<span class="meta-text">—</span>';
+  }
+
+  /* ── 업무 목록 ── */
+  const viewSeg = document.getElementById('view-seg');
+  const VIEWS = { all: 'view-all', project: 'view-project', timeline: 'view-timeline' };
+  viewSeg.querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      viewSeg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      Object.entries(VIEWS).forEach(([v, id]) => {
+        document.getElementById(id).hidden = v !== b.dataset.view;
+      });
+      document.getElementById('recent-done').hidden = b.dataset.view === 'timeline';
+    };
+  });
+
+  const allBody = document.getElementById('all-body');
+  const projectBody = document.getElementById('project-body');
+
+  function renderAll() {
+    allBody.innerHTML = '';
+    [...TASKS].sort((a, b) => a.dueIdx - b.dueIdx).forEach(t => {
+      const tr = document.createElement('tr');
+      if (t.short) tr.className = 'late';
+      tr.innerHTML =
+        '<td class="name"><a href="#task-detail">' + t.name + '</a></td>' +
+        '<td class="nowrap">' + kindBadge(t.kind) + ' ' + statusBadge(t.status) + '</td>' +
+        '<td class="meta-text nowrap">' + t.project + '</td>' +
+        '<td class="num">' + t.due + '</td>' +
+        '<td class="num">' + t.left + '시간</td>' +
+        '<td>' + pctCell(t) + '</td>' +
+        '<td class="num">' + shortCell(t) + '</td>';
+      allBody.append(tr);
+    });
+  }
+
+  function renderProjects() {
+    projectBody.innerHTML = '';
+    PROJECTS.forEach(p => {
+      const tasks = TASKS.filter(t => t.project === p.name);
+      const leftSum = tasks.reduce((a, t) => a + t.left, 0);
+      const risk = tasks.filter(t => t.short > 0).length;
+
+      const head = document.createElement('tr');
+      head.className = 'group-row';
+      const sum = tasks.length
+        ? '업무 ' + tasks.length + '건 · 남은 ' + leftSum + '시간' +
+          (risk ? ' · <span class="meta-late">마감 위험 ' + risk + '건</span>' : '')
+        : '진행 중인 업무 없음';
+      head.innerHTML =
+        '<td colspan="5">' + p.name +
+          (p.archived ? ' <span class="badge badge-done" data-component="Badge">완료</span>' : '') +
+          ' <span class="group-sum">' + sum + '</span></td>' +
+        '<td class="cell-actions"></td>';
+      if (!p.fixed) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-ghost btn-sm';
+        btn.setAttribute('data-component', 'Button');
+        btn.textContent = p.archived ? '다시 열기' : '완료 처리';
+        btn.onclick = () => { p.archived = !p.archived; renderProjects(); renderProjectOptions(); };
+        head.querySelector('.cell-actions').append(btn);
+      }
+      projectBody.append(head);
+
+      if (!tasks.length) {
+        const empty = document.createElement('tr');
+        empty.innerHTML = '<td colspan="6" class="meta-text">아직 끝나지 않은 업무가 없습니다. ' +
+          '끝낸 업무는 실적에서 봅니다.</td>';
+        projectBody.append(empty);
+        return;
+      }
+
+      tasks.forEach(t => {
+        const tr = document.createElement('tr');
+        if (t.short) tr.className = 'late';
+        tr.innerHTML =
+          '<td class="name"><a href="#task-detail">' + t.name + '</a></td>' +
+          '<td class="nowrap">' + kindBadge(t.kind) + ' ' + statusBadge(t.status) + '</td>' +
+          '<td class="num">' + t.due + '</td>' +
+          '<td class="num">' + t.left + '시간</td>' +
+          '<td>' + pctCell(t) + '</td>' +
+          '<td class="num">' + shortCell(t) + '</td>';
+        projectBody.append(tr);
+      });
+    });
+  }
+
+  /* ── 일정 보기 (간트) ── */
+  const DAYS = ['17', '18', '21', '22', '23', '24', '25', '28', '29', '30', '1', '2', '5', '6', '7', '8', '9'];
+  const DAY_DOW = ['목', '금', '월', '화', '수', '목', '금', '월', '화', '수', '목', '금', '월', '화', '수', '목', '금'];
+  const TODAY_IDX = 0;
+  const WEEK_STARTS = [0, 2, 7, 12];
+  const gantt = document.getElementById('gantt');
+
+  function cellsInto(container, headMode) {
+    for (let i = 0; i < DAYS.length; i++) {
+      const c = document.createElement('div');
+      c.className = (headMode ? 'gantt-head-cell' : 'gantt-cell') +
+        (WEEK_STARTS.includes(i) ? ' weekstart' : '') + (i === TODAY_IDX ? ' today' : '');
+      c.style.gridColumn = (i + 1) + ' / ' + (i + 2);
+      if (headMode) c.innerHTML = '<span>' + DAYS[i] + '</span><span>' + DAY_DOW[i] + '</span>';
+      container.append(c);
+    }
+  }
+
+  function renderGantt() {
+    gantt.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'gantt-row head';
+    const headLabel = document.createElement('div');
+    headLabel.className = 'gantt-label';
+    headLabel.innerHTML = '<span class="gantt-sub">9월 17일 ~ 10월 9일 (근무일)</span>';
+    const headCols = document.createElement('div');
+    headCols.className = 'gantt-cols';
+    cellsInto(headCols, true);
+    head.append(headLabel, headCols);
+    gantt.append(head);
+
+    PROJECTS.forEach(p => {
+      const tasks = TASKS.filter(t => t.project === p.name);
+      if (!tasks.length) return;
+      const group = document.createElement('div');
+      group.className = 'gantt-row group';
+      const gl = document.createElement('div');
+      gl.className = 'gantt-label';
+      gl.innerHTML = '<span class="gantt-name">' + p.name + '</span>';
+      const gc = document.createElement('div');
+      gc.className = 'gantt-cols';
+      cellsInto(gc, false);
+      group.append(gl, gc);
+      gantt.append(group);
+
+      tasks.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'gantt-row';
+        const label = document.createElement('div');
+        label.className = 'gantt-label';
+        label.innerHTML = '<span class="gantt-name"><a href="#task-detail" title="' + t.name + '">' +
+          t.name + '</a></span><span class="gantt-sub">남은 ' + t.left + '시간 · ' + t.due + ' 마감</span>';
+        const cols = document.createElement('div');
+        cols.className = 'gantt-cols';
+        cellsInto(cols, false);
+
+        const planEnd = Math.min(t.end, t.dueIdx);
+        const bar = document.createElement('div');
+        bar.className = 'gantt-bar';
+        bar.style.gridColumn = (t.start + 1) + ' / ' + (planEnd + 2);
+        cols.append(bar);
+        if (t.end > t.dueIdx) {
+          const over = document.createElement('div');
+          over.className = 'gantt-bar over';
+          over.style.gridColumn = (t.dueIdx + 2) + ' / ' + (t.end + 2);
+          cols.append(over);
+        }
+        const due = document.createElement('div');
+        due.className = 'gantt-due';
+        due.style.gridColumn = (t.dueIdx + 1) + ' / ' + (t.dueIdx + 2);
+        cols.append(due);
+
+        row.append(label, cols);
+        gantt.append(row);
+      });
+    });
+  }
+
+  /* ── 업무 등록 ── */
+  const MEDIAN = { dev: 18, review: 2.5 };
+  const LABEL = { dev: '주요 모델 개발', review: '검토 요청' };
+  const COUNT = { dev: 4, review: 6 };
+  let kind = 'review';
+
+  const kindGroup = document.getElementById('t-kind');
+  const suggestText = document.getElementById('t-suggest-text');
+  const noSuggest = document.getElementById('t-nosuggest');
+  const hoursInput = document.getElementById('t-hours');
+  const impact = document.getElementById('t-impact');
+
+  function renderSuggest() {
+    suggestText.innerHTML = '지난 <strong>' + LABEL[kind] + '</strong> ' + COUNT[kind] +
+      '건의 실제 소요 시간 중앙값은 <strong>' + MEDIAN[kind] + '시간</strong>입니다.';
+    noSuggest.textContent = '아직 완료한 ' + LABEL[kind] +
+      ' 기록이 없어 제안할 값이 없습니다. 기록이 쌓이면 여기에 나옵니다.';
+  }
+  kindGroup.querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      kind = b.dataset.kind;
+      kindGroup.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      renderSuggest();
+    };
+  });
+  document.getElementById('t-apply').onclick = () => {
+    hoursInput.value = MEDIAN[kind];
+    renderImpact();
+  };
+  hoursInput.oninput = () => renderImpact();
+  renderSuggest();
+
+  const DAY_HOURS = 5;
+  const LOAD = {
+    '2026-09-17': 5, '2026-09-18': 5, '2026-09-21': 5,
+    '2026-09-22': 5, '2026-09-23': 5, '2026-09-24': 3, '2026-09-25': 0
+  };
+  const TODAY = '2026-09-17';
+  const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  let selected = '2026-09-24';
+  let calYear = 2026, calMonth = 8;
+
+  const calBox = document.getElementById('t-cal');
+  const calGrid = document.getElementById('cal-grid');
+  const calMonthLabel = document.getElementById('cal-month');
+  const dueTrigger = document.getElementById('t-due-trigger');
+  const dueLabel = document.getElementById('t-due-label');
+  const dueLoad = document.getElementById('t-due-load');
+
+  const key = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+                   '-' + String(d.getDate()).padStart(2, '0');
+
+  function freeOn(k) {
+    const d = new Date(k + 'T00:00:00');
+    if (d.getDay() === 0 || d.getDay() === 6) return 0;
+    if (k < TODAY) return 0;
+    return Math.max(0, DAY_HOURS - (LOAD[k] ?? 0));
+  }
+
+  function renderCal() {
+    calMonthLabel.textContent = calYear + '년 ' + (calMonth + 1) + '월';
+    calGrid.innerHTML = '';
+    DOW.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'cal-dow';
+      el.textContent = n;
+      calGrid.append(el);
+    });
+    const first = new Date(calYear, calMonth, 1);
+    const start = new Date(first);
+    start.setDate(1 - first.getDay());
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const k = key(d);
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'cal-cell';
+      const inMonth = d.getMonth() === calMonth;
+      const weekend = d.getDay() === 0 || d.getDay() === 6;
+      if (!inMonth) cell.classList.add('other');
+      if (weekend) cell.classList.add('weekend');
+      if (k === TODAY) cell.classList.add('today');
+      if (k === selected) cell.classList.add('on');
+      const num = document.createElement('span');
+      num.textContent = d.getDate();
+      cell.append(num);
+      const load = LOAD[k];
+      if (inMonth && !weekend && k >= TODAY && load !== undefined) {
+        const tag = document.createElement('span');
+        tag.className = 'cal-load';
+        tag.textContent = load + 'h';
+        if (load >= DAY_HOURS) cell.classList.add('full');
+        cell.append(tag);
+      }
+      if (inMonth) {
+        cell.onclick = () => { selected = k; renderCal(); renderDue(); renderImpact(); closeCal(); };
+      } else {
+        cell.disabled = true;
+      }
+      calGrid.append(cell);
+    }
+  }
+
+  function renderDue() {
+    const d = new Date(selected + 'T00:00:00');
+    dueLabel.textContent = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' +
+      d.getDate() + '일 (' + DOW[d.getDay()] + ')';
+    const load = LOAD[selected];
+    dueLoad.textContent = load === undefined ? ''
+      : (load >= DAY_HOURS ? '꽉 참' : (DAY_HOURS - load).toFixed(1) + '시간 빔');
+  }
+
+  function openCal() { calBox.hidden = false; dueTrigger.setAttribute('aria-expanded', 'true'); }
+  function closeCal() { calBox.hidden = true; dueTrigger.setAttribute('aria-expanded', 'false'); }
+  dueTrigger.onclick = () => { calBox.hidden ? openCal() : closeCal(); };
+  document.getElementById('cal-prev').onclick = () => {
+    calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCal();
+  };
+  document.getElementById('cal-next').onclick = () => {
+    calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCal();
+  };
+  document.addEventListener('click', e => {
+    if (!calBox.hidden && !e.target.closest('.datefield')) closeCal();
+  });
+
+  function renderImpact() {
+    const h = parseFloat(hoursInput.value) || 0;
+    const d = new Date(selected + 'T00:00:00');
+    const when = (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+    let free = 0;
+    const cursor = new Date(TODAY + 'T00:00:00');
+    while (key(cursor) <= selected) { free += freeOn(key(cursor)); cursor.setDate(cursor.getDate() + 1); }
+    if (h <= free) {
+      impact.className = 'impact ok';
+      impact.innerHTML = '이 업무를 넣어도 마감을 못 맞추는 업무는 <b>2건</b> 그대로입니다. ' +
+        '<span class="meta-text">' + when + '까지 ' + free.toFixed(1) + '시간을 낼 수 있습니다.</span>';
+    } else {
+      impact.className = 'impact';
+      impact.innerHTML = '이 업무를 넣으면 마감을 못 맞추는 업무가 <b>2건에서 3건</b>이 됩니다. ' +
+        '<span class="meta-text">' + when + '까지 ' + free.toFixed(1) + '시간만 낼 수 있어 ' +
+        (h - free).toFixed(1) + '시간 모자랍니다.</span>';
+    }
+  }
+
+  const projectSelect = document.getElementById('t-project');
+  const projectNew = document.getElementById('t-project-new');
+  const projectName = document.getElementById('t-project-name');
+  const projectError = document.getElementById('t-project-error');
+  let lastProject = '데이터 파이프라인';
+
+  function renderProjectOptions() {
+    const keep = PROJECTS.some(p => p.name === lastProject && !p.archived) ? lastProject : '프로젝트 없음';
+    projectSelect.innerHTML = '';
+    PROJECTS.filter(p => !p.archived).forEach(p => {
+      const o = document.createElement('option');
+      o.textContent = p.name;
+      o.value = p.name;
+      projectSelect.append(o);
+    });
+    const add = document.createElement('option');
+    add.textContent = '+ 새 프로젝트 만들기';
+    add.value = '__new';
+    projectSelect.append(add);
+    projectSelect.value = keep;
+    lastProject = keep;
+  }
+
+  projectSelect.onchange = () => {
+    if (projectSelect.value === '__new') {
+      projectNew.hidden = false;
+      projectName.value = '';
+      projectName.focus();
+    } else {
+      lastProject = projectSelect.value;
+      projectNew.hidden = true;
+      projectError.hidden = true;
+    }
+  };
+  projectName.oninput = () => { projectError.hidden = true; };
+  document.getElementById('t-project-add').onclick = () => {
+    const name = projectName.value.trim();
+    if (!name) {
+      projectError.hidden = false;
+      projectName.focus();
+      return;
+    }
+    projectError.hidden = true;
+    PROJECTS.splice(PROJECTS.length - 1, 0, { name, archived: false });
+    lastProject = name;
+    renderProjectOptions();
+    renderProjects();
+    projectNew.hidden = true;
+  };
+
+  document.getElementById('t-save').onclick = () => show('morning');
+
+  /* ── 업무 상세 ── */
+  document.getElementById('d-edit').onclick = () => prototypeShell.setState('수정 중');
+  document.getElementById('d-cancel').onclick = () => prototypeShell.setState('Default');
+  document.getElementById('d-save').onclick = () => prototypeShell.setState('Default');
+  const dKind = document.getElementById('d-kind');
+  dKind.querySelectorAll('button').forEach(b => {
+    b.onclick = () => dKind.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+
+  const refList = document.getElementById('d-refs');
+  const refName = document.getElementById('d-ref-name');
+  const refError = document.getElementById('d-ref-error');
+  function bindRefRemove(btn) { btn.onclick = () => btn.closest('li').remove(); }
+  refList.querySelectorAll('.ref-remove').forEach(bindRefRemove);
+  refName.oninput = () => { refError.hidden = true; };
+  document.getElementById('d-ref-add').onclick = () => {
+    const name = refName.value.trim();
+    if (!name) {
+      refError.hidden = false;
+      refName.focus();
+      return;
+    }
+    refError.hidden = true;
+    const li = document.createElement('li');
+    li.innerHTML = '<a class="ref-link ref-name" href="#task-detail"></a>' +
+      '<button class="btn btn-ghost btn-sm ref-remove" data-component="Button">삭제</button>';
+    li.querySelector('a').textContent = name;
+    bindRefRemove(li.querySelector('.ref-remove'));
+    refList.append(li);
+    refName.value = '';
+  };
+
+  /* ── 퇴근 전 ── */
+  const WORK_DAY = 8;
+  const WRAP = [
+    { name: '차선 인식 모델 v3 정확도 개선', before: 5, today: 3, pct: 30, status: 'doing' },
+    { name: '협력사 센서 스펙 검토 회신', before: 0, today: 2, pct: 80, status: 'doing' },
+    { name: '야간 주행 데이터셋 라벨링 기준 검토', before: 0, today: null, pct: null, status: 'todo' },
+    { name: '모델 배포 스크립트 인수인계 문서 정리', before: 1, today: null, pct: null, status: 'doing' }
+  ];
+  const wrapBody = document.getElementById('wrap-body');
+  const meetingInput = document.getElementById('w-meeting');
+  const totalEl = document.getElementById('w-total');
+  const totalWhy = document.getElementById('w-total-why');
+  const half = n => Math.round(n * 2) / 2;
+
+  function derivedText(row) {
+    const spent = row.before + (row.today || 0);
+    if (!row.pct || row.pct <= 0) return { text: '진행률을 적으면 계산됩니다', none: true };
+    if (row.pct >= 100) return { text: '총 ' + half(spent) + '시간으로 끝남', none: false };
+    const scale = half(spent / (row.pct / 100));
+    return { text: '총 ' + scale + '시간 · 남은 ' + half(scale - spent) + '시간', none: false };
+  }
+
+  function paintRow(tr, row) {
+    const d = derivedText(row);
+    const cell = tr.querySelector('.wrap-derived');
+    cell.textContent = d.text;
+    cell.classList.toggle('none', d.none);
+    tr.querySelectorAll('.w-status button').forEach(b => {
+      b.classList.toggle('on', b.dataset.status === row.status);
+    });
+  }
+
+  function renderWrap() {
+    wrapBody.innerHTML = '';
+    WRAP.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><div class="name">' + row.name + '</div>' +
+          '<div class="meta-text" style="font-size:12px">지금까지 ' + row.before + '시간</div></td>' +
+        '<td class="num"><span class="with-suffix" style="justify-content:flex-end">' +
+          '<input type="number" class="w-hours wrap-hours-input" step="0.5" min="0" inputmode="decimal"' +
+          ' value="' + (row.today ?? '') + '" aria-label="' + row.name + ', 오늘 쓴 시간">' +
+          '<span class="suffix">시간</span></span></td>' +
+        '<td class="num"><span class="with-suffix" style="justify-content:flex-end">' +
+          '<input type="number" class="w-pct wrap-pct-input" step="5" min="0" max="100" inputmode="numeric"' +
+          ' value="' + (row.pct ?? '') + '" aria-label="' + row.name + ', 진행률">' +
+          '<span class="suffix">%</span></span></td>' +
+        '<td><span class="wrap-derived"></span></td>' +
+        '<td><div class="seg seg-sm w-status" role="group" aria-label="' + row.name + ' 상태">' +
+          '<button type="button" data-status="todo" data-component="Button">진행 전</button>' +
+          '<button type="button" data-status="doing" data-component="Button">진행 중</button>' +
+          '<button type="button" data-status="done" data-component="Button">완료</button>' +
+        '</div></td>';
+
+      const hoursInput = tr.querySelector('.w-hours');
+      const pctInput = tr.querySelector('.w-pct');
+
+      tr.querySelectorAll('.w-status button').forEach(b => {
+        b.onclick = () => {
+          row.status = b.dataset.status;
+          if (row.status === 'done') row.pct = 100;
+          if (row.status === 'todo') row.pct = null;
+          pctInput.value = row.pct ?? '';
+          paintRow(tr, row);
+        };
+      });
+
+      hoursInput.oninput = () => {
+        row.today = hoursInput.value === '' ? null : parseFloat(hoursInput.value);
+        if ((row.today || 0) > 0 && row.status === 'todo') row.status = 'doing';
+        paintRow(tr, row);
+        renderTotal();
+      };
+
+      pctInput.oninput = () => {
+        row.pct = pctInput.value === '' ? null : parseFloat(pctInput.value);
+        if ((row.pct || 0) > 0 && row.status === 'todo') row.status = 'doing';
+        if (row.pct >= 100) row.status = 'done';
+        paintRow(tr, row);
+      };
+
+      wrapBody.append(tr);
+      paintRow(tr, row);
+    });
+    renderTotal();
+  }
+
+  function renderTotal() {
+    const work = WRAP.reduce((a, r) => a + (r.today || 0), 0);
+    const meet = parseFloat(meetingInput.value) || 0;
+    const r = n => Math.round(n * 10) / 10;
+    const sum = r(work + meet);
+    totalEl.textContent = '오늘 남긴 시간 ' + sum.toFixed(1) + '시간';
+    const tail = sum > WORK_DAY
+      ? '근무 ' + WORK_DAY + '시간보다 ' + r(sum - WORK_DAY).toFixed(1) + '시간 더 썼습니다.'
+      : '근무 ' + WORK_DAY + '시간 중 ' + sum.toFixed(1) + '시간을 남겼습니다.';
+    totalWhy.textContent = '업무 ' + r(work) + '시간 + 회의 ' + r(meet) + '시간. ' + tail;
+  }
+  meetingInput.oninput = renderTotal;
+  document.getElementById('w-save').onclick = () => prototypeShell.setState('저장 완료');
+
+  renderAll();
+  renderProjects();
+  renderGantt();
+  renderProjectOptions();
+  renderCal();
+  renderDue();
+  renderImpact();
+  renderWrap();
+</script>
