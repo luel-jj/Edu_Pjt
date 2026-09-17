@@ -39,3 +39,18 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 자동 코드 리뷰는 최대 1회, 가장 낮은 강도(`code-review low`)로만 돌린다. 리뷰어를 못 부르면 그 사실만 적고 완료로 본다.
 - 지적 중 스펙의 수용 기준을 깨거나 주 경로가 실제로 깨지는 것만 고친다. 나머지는 `docs/follow-ups/`에 한 줄로 남긴다. 재리뷰는 하지 않는다.
 - 스펙이 요구하지 않은 보안 하드닝·엣지케이스·성능 방어는 범위 밖이다.
+
+<!-- BEGIN:supabase-live-docs -->
+
+# Supabase 현행 문서 참조
+
+Supabase 관련 작업(계정 인증, 스키마, 마이그레이션, RLS, 클라이언트 연결)을 시작할 때 모델 기억에 의존하지 않는다. 아래 소스를 그 시점에 직접 가져와 읽는다.
+
+- 문서 색인: https://supabase.com/llms.txt (단일 파일: https://supabase.com/llms-full.txt)
+- Agent Skills 안내: https://supabase.com/docs/guides/ai-tools/ai-skills
+
+설치된 공식 스킬 `supabase`와 `supabase-postgres-best-practices`를 먼저 읽고, 가져온 문서를 `package.json`의 `@supabase/*` 설치 버전과 대조한다. 문서와 설치 버전이 어긋나면 설치 버전을 기준으로 삼고 그 사실을 남긴다. 가져오기가 실패하면 캐시된 기억으로 대체하지 말고 막힌 지점을 보고한다.
+
+두 스킬은 `skills add supabase/agent-skills --skill supabase supabase-postgres-best-practices --agent codex claude-code --copy -y`로 갱신한다.
+
+<!-- END:supabase-live-docs -->
