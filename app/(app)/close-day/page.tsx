@@ -1,4 +1,4 @@
-import { getActiveTasks, getTaskDailyEntriesForDate, getTodayLog } from "@/lib/tasks/queries";
+import { getActiveTasks, getTaskDailyEntriesForDate, getTodayDailyLog } from "@/lib/tasks/queries";
 import { computeTaskSize } from "@/lib/tasks/scheduling";
 import { todayIsoInSeoul } from "@/lib/tasks/today";
 import { formatFullDateKo } from "@/lib/tasks/format";
@@ -6,9 +6,9 @@ import { CloseDayForm } from "./close-day-form";
 
 export default async function CloseDayPage() {
   const today = todayIsoInSeoul();
-  const [tasks, meetingHours, todayEntries] = await Promise.all([
+  const [tasks, dailyLog, todayEntries] = await Promise.all([
     getActiveTasks(),
-    getTodayLog(today),
+    getTodayDailyLog(today),
     getTaskDailyEntriesForDate(today),
   ]);
 
@@ -24,7 +24,7 @@ export default async function CloseDayPage() {
         <h1 className="text-xl font-semibold tracking-tight">{formatFullDateKo(today)} 마감</h1>
         <p className="text-sm text-muted-foreground">오늘 쓴 시간과 어디까지 왔는지만 적으면 됩니다.</p>
       </div>
-      <CloseDayForm today={today} initialMeetingHours={meetingHours} rows={rows} />
+      <CloseDayForm today={today} initialMeetingHours={dailyLog.meetingHours} initialWorkHours={dailyLog.workHours} rows={rows} />
     </div>
   );
 }

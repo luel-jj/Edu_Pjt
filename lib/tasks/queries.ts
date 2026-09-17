@@ -52,6 +52,14 @@ export async function getProjects(): Promise<Project[]> {
   return (data ?? []).map(mapProjectRow);
 }
 
+/** 상태와 무관하게(완료 포함) 업무가 하나라도 걸려 있는 프로젝트 id 집합. 삭제 가능 여부 판단에 쓴다. */
+export async function getProjectIdsWithAnyTasks(): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("tasks").select("project_id");
+  if (error) throw error;
+  return new Set((data ?? []).map((row) => row.project_id as string));
+}
+
 export async function getReferenceLinks(taskId: string): Promise<TaskReferenceLink[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -86,6 +94,18 @@ export async function getRecentMeetingHours(limit = 10): Promise<number[]> {
   return (data ?? []).map((row) => Number(row.meeting_hours));
 }
 
+/** 최근 기록 순 근무 시간 배열 (최근 10근무일치를 호출부에서 자른다). 야근 등 실제 근무시간을 반영한다. */
+export async function getRecentWorkHours(limit = 10): Promise<number[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select("work_hours")
+    .order("log_date", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) => Number(row.work_hours));
+}
+
 /** 완료된 업무의 실제 소요 시간(같은 업무 유형). 예상 시간 제안에 쓴다. */
 export async function getCompletedActualHoursByType(taskType: Task["taskType"]): Promise<number[]> {
   const supabase = await createClient();
@@ -99,16 +119,28 @@ export async function getCompletedActualHoursByType(taskType: Task["taskType"]):
   return (data ?? []).map((row) => Number(row.actual_hours));
 }
 
-/** 등록 화면 달력에서 특정 근무일에 이미 배치되어 있는 시간(등록 전 미리보기용). */
-export async function getTodayLog(dateIso: string): Promise<number> {
+/** 퇴근 전 화면에서 오늘 이미 저장된 회의 시간과 근무 시간을 함께 가져온다. */
+export async function getTodayDailyLog(dateIso: string): Promise<{ meetingHours: number; workHours: number }> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("daily_logs")
-    .select("meeting_hours")
+    .select("meeting_hours, work_hours")
     .eq("log_date", dateIso)
     .maybeSingle();
   if (error) throw error;
-  return data ? Number(data.meeting_hours) : 0;
+  return {
+    meetingHours: data ? Number(data.meeting_hours) : 0,
+    workHours: data ? Number(data.work_hours) : 8,
+  };
+}
+
+/** 완료 업무가 한 건이라도 있는 연도 목록 (최신순). 완료 기록이 없는 연도는 실적 화면에서 숨긴다. */
+export async function getYearsWithCompletedTasks(): Promise<number[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("tasks").select("completed_at").eq("status", "done").not("completed_at", "is", null);
+  if (error) throw error;
+  const years = new Set((data ?? []).map((row) => new Date(row.completed_at as string).getFullYear()));
+  return [...years].sort((a, b) => b - a);
 }
 
 export async function getTaskDailyEntriesForDate(dateIso: string): Promise<Map<string, number>> {

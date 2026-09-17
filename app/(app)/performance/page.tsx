@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getProjects, getTasksCompletedInYear } from "@/lib/tasks/queries";
+import { getProjects, getTasksCompletedInYear, getYearsWithCompletedTasks } from "@/lib/tasks/queries";
 import { summarizePerformance } from "@/lib/tasks/performance";
 import { formatHours, formatShortDateKo, TASK_TYPE_LABEL } from "@/lib/tasks/format";
 import { todayIsoInSeoul } from "@/lib/tasks/today";
@@ -18,13 +18,17 @@ export default async function PerformancePage({
   const currentMonth = Number(todayIsoInSeoul().slice(5, 7));
   const month = Number(params.month) || currentMonth;
 
-  const [tasks, projects] = await Promise.all([getTasksCompletedInYear(year), getProjects()]);
+  const [tasks, projects, yearsWithData] = await Promise.all([
+    getTasksCompletedInYear(year),
+    getProjects(),
+    getYearsWithCompletedTasks(),
+  ]);
   const summary = summarizePerformance(tasks, projects);
   const monthTasks = tasks
     .filter((t) => t.completedAt && new Date(t.completedAt).getMonth() + 1 === month)
     .sort((a, b) => (a.completedAt! < b.completedAt! ? 1 : -1));
 
-  const yearOptions = [currentYear, currentYear - 1];
+  const yearOptions = yearsWithData;
 
   return (
     <div>

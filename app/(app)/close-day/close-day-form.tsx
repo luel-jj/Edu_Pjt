@@ -29,14 +29,17 @@ function deriveStatus(currentStatus: TaskStatus, hoursToday: number, progressPer
 export function CloseDayForm({
   today,
   initialMeetingHours,
+  initialWorkHours,
   rows,
 }: {
   today: string;
   initialMeetingHours: number;
+  initialWorkHours: number;
   rows: Row[];
 }) {
   const router = useRouter();
   const [meetingHours, setMeetingHours] = useState(String(initialMeetingHours || ""));
+  const [workHours, setWorkHours] = useState(String(initialWorkHours || WORK_HOURS_PER_DAY));
   const [entries, setEntries] = useState(
     () =>
       new Map(
@@ -52,8 +55,7 @@ export function CloseDayForm({
   );
 
   const meetingHoursNum = Number(meetingHours) || 0;
-  const totalTaskHours = [...entries.values()].reduce((sum, e) => sum + e.hoursToday, 0);
-  const totalToday = totalTaskHours + meetingHoursNum;
+  const workHoursNum = Number(workHours) || WORK_HOURS_PER_DAY;
 
   function updateEntry(taskId: string, patch: Partial<{ hoursToday: number; progressPercent: number | null; statusOverride: TaskStatus | null }>) {
     setEntries((prev) => {
@@ -70,7 +72,7 @@ export function CloseDayForm({
         const status = e.statusOverride ?? deriveStatus(r.task.status, e.hoursToday, e.progressPercent);
         return { taskId: r.task.id, hoursToday: e.hoursToday, progressPercent: e.progressPercent, status };
       });
-      const res = await saveDailyClose(today, meetingHoursNum, payload);
+      const res = await saveDailyClose(today, meetingHoursNum, workHoursNum, payload);
       if (res.data) {
         setResult(res.data);
         router.refresh();
@@ -93,21 +95,40 @@ export function CloseDayForm({
       ) : null}
 
       <Card className="mb-4">
-        <CardContent className="flex flex-wrap items-center gap-4">
-          <div className="flex-1">
-            <p className="font-medium">오늘 회의에 쓴 시간</p>
-            <p className="text-xs text-muted-foreground">근무 8시간에서 이 시간을 빼서 앞으로의 하루 가용 시간을 잡습니다.</p>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1">
+              <p className="font-medium">오늘 근무한 시간</p>
+              <p className="text-xs text-muted-foreground">기본 8시간이고, 야근했으면 늘려 적습니다. 앞으로의 하루 가용 시간 기준에 반영됩니다.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                step={0.5}
+                min={0}
+                className="w-20"
+                value={workHours}
+                onChange={(e) => setWorkHours(e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">시간</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              step={0.5}
-              min={0}
-              className="w-20"
-              value={meetingHours}
-              onChange={(e) => setMeetingHours(e.target.value)}
-            />
-            <span className="text-sm text-muted-foreground">시간</span>
+          <div className="flex flex-wrap items-center gap-4 border-t pt-4">
+            <div className="flex-1">
+              <p className="font-medium">오늘 회의에 쓴 시간</p>
+              <p className="text-xs text-muted-foreground">근무 시간에서 이 시간을 빼서 앞으로의 하루 가용 시간을 잡습니다.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                step={0.5}
+                min={0}
+                className="w-20"
+                value={meetingHours}
+                onChange={(e) => setMeetingHours(e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">시간</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -196,15 +217,6 @@ export function CloseDayForm({
               ) : null}
             </TableBody>
           </Table>
-          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-t px-4 py-3.5 sm:px-6">
-            <span className="font-semibold">오늘 남긴 시간 {formatHours(totalToday)}시간</span>
-            <span className="text-sm text-muted-foreground">
-              업무 {formatHours(totalTaskHours)}시간 + 회의 {formatHours(meetingHoursNum)}시간. 근무 {WORK_HOURS_PER_DAY}시간
-              {totalToday > WORK_HOURS_PER_DAY
-                ? `을 ${formatHours(totalToday - WORK_HOURS_PER_DAY)}시간 넘겼습니다.`
-                : ` 중 ${formatHours(totalToday)}시간을 남겼습니다.`}
-            </span>
-          </div>
         </CardContent>
       </Card>
 

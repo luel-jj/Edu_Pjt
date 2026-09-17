@@ -77,6 +77,7 @@ create table public.daily_logs (
   user_id uuid not null references auth.users (id) on delete cascade,
   log_date date not null,
   meeting_hours numeric(4, 1) not null default 0,
+  work_hours numeric(4, 1) not null default 8,
   created_at timestamptz not null default now(),
   unique (user_id, log_date)
 );
@@ -151,3 +152,8 @@ create policy "task_daily_entries_owner_insert" on public.task_daily_entries for
 create policy "task_daily_entries_owner_update" on public.task_daily_entries for update
   to authenticated using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
+
+-- Migration: 퇴근 전 화면에서 오늘 실제 근무 시간을 입력받아 가용 시간 계산에 반영한다.
+-- 이미 daily_logs 테이블이 있는 기존 Supabase 프로젝트에서는 이 구문만 SQL Editor에 실행하면 된다.
+alter table public.daily_logs
+  add column if not exists work_hours numeric(4, 1) not null default 8;

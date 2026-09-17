@@ -43,7 +43,10 @@ export function NewTaskForm({ today, projects: initialProjects, dailyAvailableHo
   const [dueDate, setDueDate] = useState<string>(today);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [estimatedHours, setEstimatedHours] = useState("2");
-  const [referenceUrl, setReferenceUrl] = useState("");
+  const [referenceLinks, setReferenceLinks] = useState<{ label: string; url?: string }[]>([]);
+  const [linkMode, setLinkMode] = useState<"link" | "note">("link");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -70,6 +73,19 @@ export function NewTaskForm({ today, projects: initialProjects, dailyAvailableHo
 
   function applySuggestion() {
     if (suggestion.median !== null) setEstimatedHours(String(suggestion.median));
+  }
+
+  function handleAddReferenceLink() {
+    const label = linkLabel.trim();
+    if (!label) return;
+    const url = linkMode === "link" ? linkUrl.trim() || undefined : undefined;
+    setReferenceLinks((prev) => [...prev, { label, url }]);
+    setLinkLabel("");
+    setLinkUrl("");
+  }
+
+  function handleRemoveReferenceLink(index: number) {
+    setReferenceLinks((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleAddProject() {
@@ -106,7 +122,7 @@ export function NewTaskForm({ today, projects: initialProjects, dailyAvailableHo
         projectId: projectId === NO_PROJECT_VALUE ? "" : projectId,
         requestedDueDate: dueDate,
         estimatedHours: estimatedHoursNum,
-        referenceLinks: referenceUrl.trim() ? [{ label: referenceUrl.trim(), url: referenceUrl.trim() }] : [],
+        referenceLinks,
       });
       if (result.error) {
         setError(result.error);
@@ -283,14 +299,61 @@ export function NewTaskForm({ today, projects: initialProjects, dailyAvailableHo
               <FieldLabel htmlFor="t-link">
                 참조 링크 <span className="font-normal text-muted-foreground">(선택)</span>
               </FieldLabel>
-              <Input
-                id="t-link"
-                type="url"
-                placeholder="요청 메일이나 사내 시스템 주소"
-                value={referenceUrl}
-                onChange={(e) => setReferenceUrl(e.target.value)}
-              />
-              <FieldDescription>등록한 뒤 상세 화면에서 자료를 더 붙일 수 있습니다.</FieldDescription>
+              {referenceLinks.length > 0 ? (
+                <ul className="flex flex-col gap-1.5">
+                  {referenceLinks.map((link, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+                      <span className="flex-1 truncate">
+                        {link.label}
+                        {link.url ? <span className="text-muted-foreground"> · {link.url}</span> : null}
+                      </span>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveReferenceLink(i)}>
+                        삭제
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={linkMode === "link" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setLinkMode("link")}
+                >
+                  링크
+                </Button>
+                <Button
+                  type="button"
+                  variant={linkMode === "note" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setLinkMode("note")}
+                >
+                  비고
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  id="t-link"
+                  placeholder={linkMode === "link" ? "자료 이름" : "비고 내용"}
+                  value={linkLabel}
+                  onChange={(e) => setLinkLabel(e.target.value)}
+                  className="flex-1"
+                />
+                {linkMode === "link" ? (
+                  <Input
+                    type="url"
+                    placeholder="URL (선택)"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    className="flex-1"
+                  />
+                ) : null}
+                <Button type="button" variant="outline" size="sm" onClick={handleAddReferenceLink}>
+                  추가
+                </Button>
+              </div>
+              <FieldDescription>여러 개를 이어서 추가할 수 있습니다. 등록한 뒤 상세 화면에서도 더 붙일 수 있습니다.</FieldDescription>
             </Field>
 
             <div
